@@ -1,0 +1,3 @@
+[submodule "wanderu/bamboo/scripts"]
+	path = wanderu/bamboo/scripts
+	url = git@bitbucket.org:offero/bamboo-scripts.git
