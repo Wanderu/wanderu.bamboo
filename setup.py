@@ -1,10 +1,9 @@
 # coding: utf-8
 from setuptools import setup, find_packages
-from os.path import join as pathjoin, dirname
+# from os.path import join as pathjoin, dirname
 
-
-def read(*rnames):
-    return open(pathjoin(dirname(__file__), *rnames)).read()
+# def read(*rnames):
+#     return open(pathjoin(dirname(__file__), *rnames)).read()
 
 setup(
     # about meta
@@ -13,17 +12,14 @@ setup(
     author = "Wanderu Dev Team",
     author_email = "dev@wanderu.com",
     url = "www.wanderu.com",
+    license="Apache License 2.0",
     # description = read('README.rst'),
     description = "Reliable job processing library backed by redis.",
-    # package info
     namespace_packages = ['wanderu'],  # setuptools specific feature
     packages = find_packages(),   # Find packages in the 'src' folder
-    # package_dir = {'': 'src'},  # Make the 'src' folder the root
-                                  # package folder
     package_data = {
         'wanderu.bamboo': [
-            'scripts/*.lua',
-            'tests/*.json'
+            'scripts/*.lua'
         ]
     },
     install_requires = [
