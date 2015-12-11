@@ -26,7 +26,7 @@ from redis import StrictRedis, Redis
 from redis.exceptions import RedisError, ResponseError, ConnectionError
 
 from wanderu.bamboo.job import Job, utcunixts
-from wanderu.bamboo.util import make_key
+from wanderu.bamboo.util import make_key, gen_worker_name
 from wanderu.bamboo.io import read_lua_scripts
 from wanderu.bamboo.config import (RE_HASHSLOT, REDIS_CONN,
                         NS_JOB, NS_QUEUED, NS_WORKING, NS_FAILED,
@@ -51,17 +51,6 @@ class OperationError(Exception):
     """Used when an operation fails or cannot be executed.
     """
     pass
-
-
-def gen_random_name():
-    return str(uuid.uuid1())  # or use uuid4
-
-
-def gen_worker_name():
-    try:
-        return socket.gethostname() + "-" + str(os.getpid())
-    except:
-        return gen_random_name()
 
 
 class RedisJobQueueBase(object):

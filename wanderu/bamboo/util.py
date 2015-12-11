@@ -19,6 +19,7 @@ from os import getpid
 from socket import gethostname
 from string import ascii_lowercase, digits
 from random import choice
+from uuid import uuid1
 
 MS_TO_SEC = 10**6
 
@@ -58,7 +59,18 @@ def random_chars(n=1):
                     for _ in xrange(n)])
 
 
-def unique_name():
-    return "_".join((gethostname().lower(),
+def gen_random_name():
+    return str(uuid1())  # or use uuid4
+
+
+def name_for_host():
+    return "-".join((gethostname().lower(),
                      str(getpid()),
                      random_chars(6)))
+
+def gen_worker_name():
+    try:
+        # gethostname can fail in some contexts
+        return name_for_host()
+    except:
+        return gen_random_name()
