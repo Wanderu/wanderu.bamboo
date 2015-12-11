@@ -17,8 +17,9 @@ NS_WORKERS   = "WORKERS"
 NS_ACTIVE    = "ACTIVE"
 NS_SEP       = ":"
 
-DEFAULT_PRIORITY = 5  # [0, 10) (our choice of priority range)
-REQUEUE_TIMEOUT = 60*60  # in seconds
-JOB_TIMEOUT = 60*60  # in seconds
+DEFAULT_PRIORITY = 5      # [0, 10) (our choice)
+REQUEUE_TIMEOUT = 60*60   # seconds
+JOB_TIMEOUT = 60*60       # seconds
+WORKER_EXPIRATION = 5*60  # seconds
 
 RE_HASHSLOT = re.compile(r".*?{.*?}.*?")

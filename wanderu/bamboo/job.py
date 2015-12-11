@@ -27,7 +27,7 @@ class GenericModel(object):
 
     def __init__(self, **kwargs):
         for k, v in self._fields.items():
-            #setattr(self, k, kwargs.get(k, v.get('default', None)))
+            # setattr(self, k, kwargs.get(k, v.get('default', None)))
             default = v.get('default', None)
             # set default values for items on initialization
             setattr(self, k,
@@ -54,12 +54,12 @@ class GenericModel(object):
 
     @classmethod
     def from_string_list(cls, l):
-        cls(**{k, v for k, v in in twos(l)})
+        cls(**{k: v for k, v in twos(l)})
 
-    def as_string_list(self):
-        return list(chain(
-            *(k, getattr(self, k) for k in self._fields
-                if not filter or getattr(self, k, None))))
+    def as_string_tup(self):
+        # tuple(chain(*job.as_dict(filter=True).items()))
+        return tuple(chain(*((k, getattr(self, k)) for k in self._fields
+                            if not filter or getattr(self, k, None))))
 
     @classmethod
     def from_dict(cls, d):

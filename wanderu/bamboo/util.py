@@ -1,6 +1,10 @@
-from itertools import chain
-from datetime import datetime
 from calendar import timegm
+from datetime import datetime
+from itertools import chain
+from os import getpid
+from socket import gethostname
+from string import ascii_lowercase, digits
+from random import choice
 
 MS_TO_SEC = 10**6
 
@@ -33,3 +37,14 @@ def utcunixts(dt=None):
     nowunixtz = timegm(dt.utctimetuple())
     nowunixtzms = (nowunixtz + float(dt.microsecond)/MS_TO_SEC)
     return nowunixtzms
+
+
+def random_chars(n=1):
+    return "".join([choice(list(chain(ascii_lowercase, digits)))
+                    for _ in xrange(n)])
+
+
+def unique_name():
+    return "_".join((gethostname().lower(),
+                     str(getpid()),
+                     random_chars(6)))

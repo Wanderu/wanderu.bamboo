@@ -1,9 +1,8 @@
 # coding: utf-8
 
 import codecs
-from pkg_resources import resource_filename, resource_listdir
-from string import Template
-from os.path import isdir, join as pathjoin
+from pkg_resources import resource_filename
+from os.path import join as pathjoin
 
 from wanderu.bamboo.config import (LUA_EXT, LUA_SCR_PKG, LUA_SCR_DIR)
 
