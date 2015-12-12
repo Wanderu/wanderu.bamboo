@@ -14,7 +14,7 @@
 
 from itertools import chain
 
-from wanderu.bamboo.utils import twos
+from wanderu.bamboo.util import twos, utcunixts
 from wanderu.bamboo.config import DEFAULT_PRIORITY
 
 class GenericModel(object):
@@ -130,8 +130,8 @@ class Job(GenericModel):
         'failed'     : {'type': float},
         'consumed'   : {'type': float},
         'owner'      : {'type': unicode},
-        'contenttype': {'type': unicode, default: u""},
-        'encoding'   : {'type': unicode, default: u""},
+        'contenttype': {'type': unicode, 'default': u""},
+        'encoding'   : {'type': unicode, 'default': u""},
         'state'      : {'type': unicode},
     }
 

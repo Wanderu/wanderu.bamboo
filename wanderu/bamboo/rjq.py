@@ -13,27 +13,21 @@
 # limitations under the License.
 
 import logging
-import calendar
 import redis
-import uuid
-import socket
-import os
-
+import sha
 from types import StringTypes
-from itertools import chain, imap
 
 from redis import StrictRedis, Redis
-from redis.exceptions import RedisError, ResponseError, ConnectionError
+from redis.exceptions import RedisError
+# ConnectionError happens when the database is unavailable.
 
 from wanderu.bamboo.job import Job, utcunixts
 from wanderu.bamboo.util import make_key, gen_worker_name
 from wanderu.bamboo.io import read_lua_scripts
-from wanderu.bamboo.config import (RE_HASHSLOT, REDIS_CONN,
-                        NS_JOB, NS_QUEUED, NS_WORKING, NS_FAILED,
-                        NS_MAXJOBS, NS_MAXFAILED, NS_SCHEDULED,
-                        NS_WORKERS, NS_ACTIVE, NS_SEP,
-                        REQUEUE_TIMEOUT, JOB_TIMEOUT,
-                        WORKER_EXPIRATION)
+from wanderu.bamboo.config import (
+                        RE_HASHSLOT, REDIS_CONN, QUEUE_NAMES,
+                        NS_JOB, NS_QUEUED, NS_SCHEDULED, NS_SEP,
+                        REQUEUE_TIMEOUT, WORKER_EXPIRATION)
 
 logger = logging.getLogger(__name__)
 error  = logger.error
@@ -65,16 +59,17 @@ class RedisJobQueueBase(object):
             cls.scripts.clear()
 
             script_names = [
-                'ack.lua'
-                'cancel.lua'
-                'close.lua'
-                'consume.lua'
-                'enqueue.lua'
-                'fail.lua'
-                'maxfailed.lua'
-                'maxjobs.lua'
-                'recover.lua'
-                'test.lua'
+                'ack.lua',
+                'cancel.lua',
+                'close.lua',
+                'can_consume.lua',
+                'consume.lua',
+                'enqueue.lua',
+                'fail.lua',
+                'maxfailed.lua',
+                'maxjobs.lua',
+                'recover.lua',
+                'test.lua',
             ]
 
             script_map = read_lua_scripts(script_names)
@@ -114,14 +109,12 @@ def get_redis_connection(conn):
 
 class RedisJobQueue(RedisJobQueueBase):
     """
-    RedisJobQueue(name="worker1", namespace="MY:NS",
-                  conn="localhost/0")
+    RedisJobQueue(namespace, name="worker1", conn="localhost/0")
     """
 
     def __init__(self, namespace, name=None, conn=None,
                  worker_expiration=WORKER_EXPIRATION,
-                 requeue_timeout=REQUEUE_TIMEOUT,
-                 ):
+                 requeue_timeout=REQUEUE_TIMEOUT):
 
         self.namespace = RE_HASHSLOT.match(namespace) and namespace \
                             or ("{%s}" % namespace)
@@ -134,7 +127,7 @@ class RedisJobQueue(RedisJobQueueBase):
         self._load_lua_scripts(self.conn)
 
     def key(self, *args):
-        "Helper to build redis keys given the namespace."
+        "Helper to build redis keys given the instance's namespace."
         return make_key(NS_SEP, self.namespace, *args)
 
     def op(self, name, keys, args):
@@ -150,6 +143,9 @@ class RedisJobQueue(RedisJobQueueBase):
         retrieves one job at a time from the database. The iterator works with
         a queue that changes over time.
         """
+        if Q not in QUEUE_NAMES:
+            raise OperationError("Invalid queue name: %s" % Q)
+
         for jid, score in self.conn.zscan_iter(self.key(Q)):
             try:
                 job = self.get(jid)
@@ -157,8 +153,88 @@ class RedisJobQueue(RedisJobQueueBase):
             except NotFoundError:
                 continue
 
-    def subscribe(self):
-        pass
+    def can_consume(self):
+        """Returns True if there are jobs available to consume. False
+        otherwise.
+        """
+        keys = (self.namespace,)
+        args = (utcunixts(),)
+        res = self.op("can_consume", keys, args)
+        return res > 0
+
+    def count(self, queue):
+        """Return the number of items in a given queue."""
+        if queue not in QUEUE_NAMES:
+            raise OperationError("Invalid queue name: %s" % queue)
+        return self.conn.zcard(self.key(queue))
+
+    def subscribe_callback(self, callback):
+        """Threaded queue event subscribe. `callback` will be called
+        in the worker thread each time a message is received. The
+        callback function should take 2 arguments, the job id and
+        the name of the queue.
+
+        Returns an object that should be closed (ob.close()) in order
+        to unsubscribe and stop receiving events. It can be used with
+        `contextlib.closing`.
+        """
+
+        keys_rev = {self.key(q): q for q in QUEUE_NAMES}
+
+        def proxy_callback(msg):
+            #         job id           name of queue
+            callback(msg['data'], keys_rev[msg['channel']])
+
+        ps = self.conn.pubsub()
+        ps.subscribe(**{self.key(q): proxy_callback for q in QUEUE_NAMES})
+
+        # run_in_thread already ignores subscribe messages
+        psthread = ps.run_in_thread(callback)
+
+        # with closing(rjq.subscribe_callback(cb)):
+        #     pass
+
+        class Closer(object):
+            def close(self):
+                psthread.stop()
+
+        return Closer()
+
+    def subscribe(self, block=False, timeout=0.1):
+        """Returns a generator yielding messages for all queue events.
+
+        The generator yields tuples of the form (job-id, queue).
+
+        Note: The generator should be closed (gen.close()) in order to
+        free the connection resouces used and unsubscribe from messages.
+        """
+        ps = self.conn.pubsub()
+        # Subscribe to all queue messages
+        ps.subscribe(*(self.key(q) for q in QUEUE_NAMES))
+
+        keys_rev = {self.key(q): q for q in QUEUE_NAMES}
+
+        def message_gen():
+            try:
+                while ps.subscribed:
+                    msg = ps.handle_message(
+                            ps.parse_response(block=block, timeout=timeout),
+                            ignore_subscribe_messages=True)
+
+                    # msg can be None for (un)subscribe messages and when
+                    # the pubsub channel is closed.
+                    if msg is None:
+                        yield None
+
+                    #       job id           name of queue
+                    yield msg['data'], keys_rev[msg['channel']]
+
+            # except GeneratorExit:
+            finally:
+                ps.unsubscribe()
+                ps.close()
+
+        return message_gen()
 
     def add(self, job):
         keys = (self.namespace,)
@@ -267,3 +343,17 @@ class RedisJobQueue(RedisJobQueueBase):
         args = (val or "",)
         res = self.op("maxjobs", keys, args)
         return res
+
+
+class RedisJobQueueView(RedisJobQueue):
+    __slots__ = ['rjq', 'namespace']
+
+    def __init__(self, rjq, namespace):
+        self.rjq = rjq
+        self.namespace = namespace
+
+    def __getattr__(self, attr):
+        """
+        __getattr__ handles attributes that are not found (member lookup fail)
+        """
+        return getattr(self.rjq, attr)
