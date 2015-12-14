@@ -14,6 +14,18 @@
 
 import re
 
+JOB_STATE_ENQUEUED  = "enqueued"    # available for work on a queue
+                                    # (even if already failed)
+JOB_STATE_WORKING   = "working"     # consumed/reserved by a worker
+JOB_STATE_SCHEDULED = "scheduled"   # on the scheduled queue
+JOB_STATE_FAILED    = "failed"      # not enqueued any more (failed out)
+JOB_STATE_PROCESSED = "processed"   # acked successfully, still hanging
+                                    # around somewhere
+
+JOB_STATES = [JOB_STATE_ENQUEUED, JOB_STATE_WORKING,
+              JOB_STATE_SCHEDULED, JOB_STATE_PROCESSED,
+              JOB_STATE_FAILED]
+
 REDIS_CONN   = {'host': 'localhost', 'port': 6379, 'db': 0}
 
 LUA_SCR_PKG  = 'wanderu.bamboo'
@@ -24,7 +36,7 @@ NS_QUEUED    = "QUEUED"
 NS_WORKING   = "WORKING"
 NS_FAILED    = "FAILED"
 NS_SCHEDULED = "SCHEDULED"
-NS_JOB       = "JOB"
+NS_JOB       = "JOBS"
 NS_MAXJOBS   = "MAXJOBS"
 NS_MAXFAILED = "MAXFAILED"
 NS_WORKERS   = "WORKERS"

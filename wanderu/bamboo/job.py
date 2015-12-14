@@ -66,9 +66,9 @@ class GenericModel(object):
 
     @classmethod
     def from_string_list(cls, l):
-        cls(**{k: v for k, v in twos(l)})
+        return cls(**{k: v for k, v in twos(l)})
 
-    def as_string_tup(self):
+    def as_string_tup(self, filter=True):
         # tuple(chain(*job.as_dict(filter=True).items()))
         return tuple(chain(*((k, getattr(self, k)) for k in self._fields
                             if not filter or getattr(self, k, None))))

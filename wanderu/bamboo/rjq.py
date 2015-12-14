@@ -21,30 +21,21 @@ from redis import StrictRedis, Redis
 from redis.exceptions import RedisError
 # ConnectionError happens when the database is unavailable.
 
-from wanderu.bamboo.job import Job, utcunixts
-from wanderu.bamboo.util import make_key, gen_worker_name
+from wanderu.bamboo.job import Job
+from wanderu.bamboo.util import make_key, gen_worker_name, utcunixts
 from wanderu.bamboo.io import read_lua_scripts
 from wanderu.bamboo.config import (
                         RE_HASHSLOT, REDIS_CONN, QUEUE_NAMES,
                         NS_JOB, NS_QUEUED, NS_SCHEDULED, NS_SEP,
                         REQUEUE_TIMEOUT, WORKER_EXPIRATION)
+from wanderu.bamboo.errors import (message_to_error,
+                            OperationError, UnknownJobId)
 
 logger = logging.getLogger(__name__)
 error  = logger.error
 warn   = logger.warn
 info   = logger.info
 debug  = logger.debug
-
-class NotFoundError(KeyError):
-    """Used when a specified Redis object is not found. IE. Job ID
-    """
-    pass
-
-
-class OperationError(Exception):
-    """Used when an operation fails or cannot be executed.
-    """
-    pass
 
 
 class RedisJobQueueBase(object):
@@ -134,8 +125,9 @@ class RedisJobQueue(RedisJobQueueBase):
         try:
             res = getattr(self, "_"+name)(keys, args)
         except RedisError, err:
-            error("Error in %s: %s", (name, err))
-            raise OperationError("%s" % err)
+            error("Error in %s: %s" % (name, err))
+            raise message_to_error(err.message)
+            # raise OperationError("%s" % err)
         return res
 
     def queue_iter(self, Q, withscores=False):
@@ -150,7 +142,7 @@ class RedisJobQueue(RedisJobQueueBase):
             try:
                 job = self.get(jid)
                 yield (job, score) if withscores else job
-            except NotFoundError:
+            except UnknownJobId:
                 continue
 
     def can_consume(self):
@@ -242,16 +234,35 @@ class RedisJobQueue(RedisJobQueueBase):
         args = (NS_QUEUED, job.priority, job.id, "0") + job.as_string_tup()
         return self.op("enqueue", keys, args)
 
-    def schedule(self, job, time):
+    enqueue = add
+
+    def requeue(self, job, priority):
         keys = (self.namespace,)
         # <queue> <priority> <jobid> <force> <key> <val> [<key> <val> ...]
-        args = (NS_SCHEDULED, job.priority, job.id, "0") + job.as_string_tup()
+        args = (NS_QUEUED, priority, job.id, "1") + job.as_string_tup()
         return self.op("enqueue", keys, args)
 
-    def reschedule(self, job, time):
+    def schedule(self, job, dt):
+        """Enqueue a Job directly onto the SCHEDULED queue.
+
+        dt: Int. Unix UTC timestamp. Schedule date.
+        """
         keys = (self.namespace,)
         # <queue> <priority> <jobid> <force> <key> <val> [<key> <val> ...]
-        args = (NS_SCHEDULED, job.priority, job.id, "1") + job.as_string_tup()
+        args = (NS_SCHEDULED, dt, job.id, "0") + job.as_string_tup()
+        return self.op("enqueue", keys, args)
+
+    def reschedule(self, job, dt):
+        """Reschedule an existing job no matter the parameters.
+
+        dt: Int. Unix UTC timestamp. Schedule date.
+
+        Raises UnknownJobId if the job does not exist or InWork if
+        it has already been consumed and is in the working state.
+        """
+        keys = (self.namespace,)
+        # <queue> <priority> <jobid> <force> <key> <val> [<key> <val> ...]
+        args = (NS_SCHEDULED, dt, job.id, "1") + job.as_string_tup()
         return self.op("enqueue", keys, args)
 
     def get(self, job_id):
@@ -260,12 +271,14 @@ class RedisJobQueue(RedisJobQueueBase):
         This does *NOT* consume/reserve a job.
         Use this for introspecting job contents.
 
-        Raises a NotFoundError when the job_id is not found in the database.
+        Raises a UnknownJobId when the job_id is not found in the database.
+
+        TODO: Return the scheduled date as well.
         """
         job_dict = self.conn.hgetall(self.key(NS_JOB, job_id))
         # hgetall returns an empty dict {} if the item was not found
         if len(job_dict) == 0:
-            raise NotFoundError("No job with job ID {jid} found."
+            raise UnknownJobId("No job with job ID {jid} found."
                                 .format(jid=job_id))
 
         return Job.from_dict(job_dict)
@@ -273,12 +286,14 @@ class RedisJobQueue(RedisJobQueueBase):
     def consume(self, job_id=None):
         # <ns>
         keys = (self.namespace,)
-        # <client_name> <datetime> <job_id> <expires>
+        # <client_name> <job_id> <datetime> <expires>
         args = (self.name,
-                utcunixts(),
                 job_id or "",
+                utcunixts(),
                 self.worker_expiration)
+        # debug("consume %s %s", keys, args)
         res = self.op("consume", keys, args)
+        # debug("consume results: %s", res)
         job = Job.from_string_list(res)
         return job
 
@@ -294,13 +309,11 @@ class RedisJobQueue(RedisJobQueueBase):
         # <ns>
         keys = (self.namespace,)
         # <jobid> <datetime> <requeue_seconds>
+        if requeue_seconds is None:
+            requeue_seconds = (REQUEUE_TIMEOUT * (job.failures**2))
         args = (job.id,
                 utcunixts(),
-                (requeue_seconds is None)
-                    # 0, 1, 4, 9, 16, 25 ... hours
-                    and (3600 * (job.failures**2))
-                    or requeue_seconds
-                )
+                requeue_seconds)
         res = self.op("fail", keys, args)
         return res
 
@@ -310,11 +323,16 @@ class RedisJobQueue(RedisJobQueueBase):
         scheduled requeue time to requeue_seconds. It is useful for the caller
         to reschedule jobs individually after recovering.
         """
+        if requeue_seconds is None:
+            # TODO: This could be set to 0 to immediately requeue items
+            #       What's the strategy when we don't know why a worker
+            #       failed? Requeue right away? or requeue later?
+            requeue_seconds = REQUEUE_TIMEOUT
         # <ns>
         keys = (self.namespace,)
         # <datetime> <requeue_seconds>
         args = (utcunixts(),
-                requeue_seconds is None and 3600 or requeue_seconds)
+                requeue_seconds)
 
         # list of job IDs that have been recovered
         recovered_jobs = self.op("recover", keys, args)
@@ -328,7 +346,11 @@ class RedisJobQueue(RedisJobQueueBase):
         # <ns>
         keys = (self.namespace,)
         # <val>
-        args = (val or "",)
+        if val is None:
+            args = tuple()
+        else:
+            args = (val,)
+
         res = self.op("maxfailed", keys, args)
         return res
 
@@ -340,7 +362,11 @@ class RedisJobQueue(RedisJobQueueBase):
         # <ns>
         keys = (self.namespace,)
         # <val>
-        args = (val or "",)
+        if val is None:
+            args = tuple()
+        else:
+            args = (val,)
+
         res = self.op("maxjobs", keys, args)
         return res
 
