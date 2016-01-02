@@ -37,53 +37,41 @@ warn   = logger.warn
 info   = logger.info
 debug  = logger.debug
 
+SCRIPT_NAMES = [
+    'ack.lua',
+    'cancel.lua',
+    'close.lua',
+    'can_consume.lua',
+    'consume.lua',
+    'enqueue.lua',
+    'fail.lua',
+    'maxfailed.lua',
+    'maxjobs.lua',
+    'recover.lua',
+    'test.lua',
+]
+
 
 class RedisJobQueueBase(object):
-    scripts = set()  # redis.Script objects
-    # initialize as many classes as we want, but only load scripts once
-    scripts_loaded = False
 
-    @classmethod
-    def _load_lua_scripts(cls, conn):
-        if not cls.scripts_loaded:
+    def __init__(self, namespace, name=None, conn=None,
+                 worker_expiration=WORKER_EXPIRATION,
+                 requeue_timeout=REQUEUE_TIMEOUT):
 
-            cls.scripts.clear()
+        self.namespace = RE_HASHSLOT.match(namespace) and namespace \
+                            or ("{%s}" % namespace)
+        self.name = name or gen_worker_name()
+        self.worker_expiration = worker_expiration
+        self.requeue_timeout = requeue_timeout
+        self.conn = None
 
-            script_names = [
-                'ack.lua',
-                'cancel.lua',
-                'close.lua',
-                'can_consume.lua',
-                'consume.lua',
-                'enqueue.lua',
-                'fail.lua',
-                'maxfailed.lua',
-                'maxjobs.lua',
-                'recover.lua',
-                'test.lua',
-            ]
+        # Subclasses should implement these methods
+        self._init_connection(conn)
+        self._load_lua_scripts()
 
-            script_map = read_lua_scripts(script_names)
-
-            # load scripts and/or templates and assign them as attribute names
-            # to the class, prefixed by an underscore
-            for name, contents in script_map.items():
-                script = conn.register_script(contents)
-                setattr(cls, "_{}".format(name), script)
-                cls.scripts.add(script)
-
-                # Additional info for runtime profiling using redis' SLOWLOG
-                # Match slowlog entries to these log messages.
-                script_sha = sha.sha(contents).hexdigest()
-                info("script name: %s sha: %s",
-                      name, script_sha,
-                      extra={'sha': script_sha, 'script': name})
-
-            # ^above^ is a generic way of saying:
-            # cls._ack     = add_script('ack.lua')
-            # cls._consume = add_script('consume.lua')
-
-            cls.scripts_loaded = True
+    def key(self, *args):
+        "Helper to build redis keys given the instance's namespace."
+        return make_key(NS_SEP, self.namespace, *args)
 
 
 def get_redis_connection(conn):
@@ -103,23 +91,25 @@ class RedisJobQueue(RedisJobQueueBase):
     RedisJobQueue(namespace, name="worker1", conn="localhost/0")
     """
 
-    def __init__(self, namespace, name=None, conn=None,
-                 worker_expiration=WORKER_EXPIRATION,
-                 requeue_timeout=REQUEUE_TIMEOUT):
-
-        self.namespace = RE_HASHSLOT.match(namespace) and namespace \
-                            or ("{%s}" % namespace)
-        self.name = name or gen_worker_name()
-        self.worker_expiration = worker_expiration
-        self.requeue_timeout = requeue_timeout
-
+    def _init_connection(self, conn):
         self.conn = get_redis_connection(REDIS_CONN if conn is None else conn)
         self.conn.client_setname(self.name)  # unique name for this client
-        self._load_lua_scripts(self.conn)
 
-    def key(self, *args):
-        "Helper to build redis keys given the instance's namespace."
-        return make_key(NS_SEP, self.namespace, *args)
+    def _load_lua_scripts(self):
+        script_map = read_lua_scripts(SCRIPT_NAMES)
+
+        # load scripts and/or templates and assign them as attribute names
+        # to the class, prefixed by an underscore
+        for name, contents in script_map.items():
+            script = self.conn.register_script(contents)
+            setattr(self, "_{}".format(name), script)
+
+            # Additional info for runtime profiling using redis' SLOWLOG
+            # Match slowlog entries to these log messages.
+            script_sha = sha.sha(contents).hexdigest()
+            info("script name: %s sha: %s",
+                    name, script_sha,
+                    extra={'sha': script_sha, 'script': name})
 
     def op(self, name, keys, args):
         try:
