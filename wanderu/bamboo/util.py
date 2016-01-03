@@ -20,8 +20,19 @@ from socket import gethostname
 from string import ascii_lowercase, digits
 from random import choice
 from uuid import uuid1
+from urlparse import urlparse
+from urllib import unquote
 
 MS_TO_SEC = 10**6
+
+def parse_url(url):
+    """url: redis://localhost:6379/0"""
+    pr = urlparse(url)
+    host, path, password = map(unquote,
+            (pr.hostname or "", pr.path or "", pr.password or ""))
+    dbid = path[1:].split('/')[0]
+    return (host or "localhost", pr.port or 6379, dbid or None,
+            password or None)
 
 def twos(l):
     """
