@@ -120,7 +120,7 @@ class RedisJobQueue(RedisJobQueueBase):
             # raise OperationError("%s" % err)
         return res
 
-    def queue_iter(self, Q, withscores=False):
+    def peek(self, Q, count=None, withscores=False):
         """Use this function to retrieve Jobs via a queue iterator that
         retrieves one job at a time from the database. The iterator works with
         a queue that changes over time.
@@ -128,12 +128,14 @@ class RedisJobQueue(RedisJobQueueBase):
         if Q not in QUEUE_NAMES:
             raise OperationError("Invalid queue name: %s" % Q)
 
-        for jid, score in self.conn.zscan_iter(self.key(Q)):
+        for jid, score in self.conn.zscan_iter(self.key(Q), count=count):
             try:
                 job = self.get(jid)
                 yield (job, score) if withscores else job
             except UnknownJobId:
                 continue
+
+    queue_iter = peek  # backwards-compatibility
 
     def can_consume(self):
         """Returns True if there are jobs available to consume. False

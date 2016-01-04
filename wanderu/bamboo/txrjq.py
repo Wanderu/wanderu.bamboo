@@ -11,7 +11,8 @@ from wanderu.bamboo.config import NS_JOB, QUEUE_NAMES
 from wanderu.bamboo.errors import (message_to_error,
                                    OperationError, UnknownJobId)
 from wanderu.bamboo.util import utcunixts
-from wanderu.bamboo.txred import makeConnection, makeSubscriber, zscan_cb
+from wanderu.bamboo.txred import (makeConnection, makeSubscriber,
+                                  zscan_items, JobScanner)
 
 logger = logging.getLogger(__name__)
 error  = logger.error
@@ -25,16 +26,12 @@ class TxRedisJobQueue(RedisJobQueue):
         """conn: String. Redis connection URL string."""
         self.url = url
         self.conn = makeConnection(url or "", self.name)
-        self.client_setname(self.name)
 
     def _load_lua_scripts(self):
         self.scripts = {
             name: Script(self.conn, script)
             for (name, script) in read_lua_scripts(SCRIPT_NAMES).items()
         }
-
-    def client_setname(self, name):
-        return self.conn.execute_command("CLIENT", "SETNAME", name)
 
     def _op_error(self, failure, name):
         if failure.check(redis.ResponseError):
@@ -63,18 +60,51 @@ class TxRedisJobQueue(RedisJobQueue):
         # Wrap the existing method in a deferred due to how it raises
         # exceptions.
         d = defer.succeed(queue)
-        d.addCallback(super(RedisJobQueue, self).count)
+        d.addCallback(super(TxRedisJobQueue, self).count)
         return d
 
-    def jobs(self, cb, Q, withscores=False, count=None):
-        def _cb(jobid, score):
-            job = self.get(jobid)
-            if withscores:
-                cb(job, score)
-            else:
-                cb(job)
+    def peek(self, cb, Q, count=None):
+        """Returns a deferred that is called back (finishes) after all items
+        have been exhausted.
 
-        return zscan_cb(_cb, self.conn, self.key(Q), match=None, count=count)
+        cb: Function. Takes 1 parameter, a job object. It is called
+        for each returned job object in the queue, in priority order.
+        Q: String. The base name of the queue.
+        count: Int. Optional. The maximum number of jobs to return.
+        """
+        if Q not in QUEUE_NAMES:
+            return defer.fail(OperationError("Invalid queue name: %s" % Q))
+
+        scanner = JobScanner(self)
+        scanner.receivedJob = cb
+        d = scanner.scan(Q, count=count)
+        return d
+
+    @defer.inlineCallbacks
+    def queue_iter(self, Q, count=None):
+        """Returns a deferred that is called back with an iterator. The
+        iterator yields deferreds that result in Job objects.
+
+        IE.
+        >> q_d = rjq.queue_iter(QUEUED, 5)
+        >> def printJob(job):
+              print job
+        >> def processJobs(jobs):
+              for job_d in jobs:
+                job_d.addCallback(printJob)
+        >> q_d.addCallback(processJobs)
+
+        Even better:
+        >> @defer.inlineCallbacks
+           def printJobs(rjq):
+              it = yield rjq.queue_iter(QUEUED, 5)
+              for d in it:
+                  job = yield d
+                  print job
+        """
+        items = yield zscan_items(self.conn, self.key(Q),
+                                 match=None, count=count)
+        defer.returnValue((self.get(jobid) for jobid, score in items))
 
     def subscribe(self, callback):
         """

@@ -13,7 +13,7 @@ from wanderu.bamboo.config import QUEUE_NAMES
 def printQueues(rjq):
     for queue in QUEUE_NAMES:
         print (queue)
-        for job in rjq.queue_iter(queue):
+        for job in rjq.peek(queue):
             print (job)
         print ("")
 

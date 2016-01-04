@@ -1,5 +1,5 @@
 from twisted.internet import reactor
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet import defer
 
 import txredisapi as redis
 
@@ -70,49 +70,88 @@ def makeSubscriber(url, name, callback):
     return factory.handler
 
 class Scanner(object):
-    def __init__(self, conn, receivedItem=None):
+    """An abstract class that iterates over zset items.
+
+    Subclasses should override the `receivedItem` method.
+    """
+    def __init__(self, conn):
         """
         conn: The redis connection object.
-        receivedItem: Callback function that is executed for each item
-                      in the queue.
         """
+        self._stop = False
+        self.deferred = defer.Deferred()
         self.conn = conn
-        if receivedItem is not None:
-            self.receivedItem = receivedItem
 
     def receivedItem(self, item, score):
-        pass
+        """
+        item: String. Item from the queue.
+        score: Number. Queue Score (priority) of the item.
+        """
+        raise NotImplementedError("Subclasses must override this method.")
 
     def scan(self, key, match=None, count=None):
+        self.deferred = self._scan(key, match, count)
+        return self.deferred
+
+    @defer.inlineCallbacks
+    def _scan(self, key, match=None, count=None):
         """
         Returns a deferred that executes it's callback after all items
         from the queue have been returned.
-
-        >> def cb(item, data):
-              print ((item, data))
-        >> d = Scanner(conn, cb).scan(key)
-        >> d.addCallback(...)
         """
-        return zscan_cb(self.receivedItem, self.conn, key, match, count)
+        # Redis will return `count` or greater items from the zset.
+        # We manually limit it by keeping track of the number of items.
+        ct = 0
+        cursor = 0
+        while not self._stop:
+            cursor, items = yield self.conn.zscan(key, cursor, match, count)
+            for item, score in twos(items):
+                if self._stop:
+                    break
+                # item is a tuple of (data, score)
+                yield self.receivedItem(item, score)
+                ct += 1
+                if count is not None and ct == count:
+                    self.stop()
+            if cursor == 0:
+                self.stop()
 
-@inlineCallbacks
-def zscan_iter(conn, key, match=None, count=None):
-    items = []
+    def stop(self):
+        self._stop = True
 
-    def cb(data):
-        item, score = data
-        items.append(item)
+class JobScanner(Scanner):
+    """An abstract class that iterates over Job items.
 
-    yield zscan_cb(cb, conn, key, match, count)
-    returnValue(items)
+    Subclasses should override the `receivedJob` method.
+    """
+    def __init__(self, rjq):
+        self.rjq = rjq
+        Scanner.__init__(self, rjq.conn)
 
-@inlineCallbacks
-def zscan_cb(cb, conn, key, match=None, count=None):
+    def scan(self, Q, match=None, count=None):
+        return Scanner.scan(self, self.rjq.key(Q), match, count)
+
+    @defer.inlineCallbacks
+    def receivedItem(self, item, score):
+        job = yield self.rjq.get(item)
+        yield self.receivedJob(job)
+
+    def receivedJob(self, job):
+        raise NotImplementedError("Subclass must override this method.")
+
+@defer.inlineCallbacks
+def zscan_items(conn, key, match=None, count=None):
     cursor = 0
+    ct = 0
+
+    items = []
     while True:
-        cursor, items = yield conn.zscan(key, cursor, match, count)
-        for item in twos(items):
-            # item is a tuple of (data, score)
-            cb(item)
-        if cursor == 0:
+        cursor, _items = yield conn.zscan(key, cursor, match, count)
+        for item, score in twos(_items):
+            if ct == count:
+                break
+            items.append((item, score))
+        if ct == count or cursor == 0:
             break
+
+    defer.returnValue(items)

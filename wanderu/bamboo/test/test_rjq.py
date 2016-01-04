@@ -30,8 +30,7 @@ from wanderu.bamboo.config import (
     JOB_STATE_SCHEDULED
 )
 
-from wanderu.bamboo.test.util import (generate_jobs, TCBase, job_cmp,
-                                    printQueues, clear_ns)
+from wanderu.bamboo.test.util import (generate_jobs, TCBase, job_cmp, clear_ns)
 from wanderu.bamboo.util import utcunixts
 from wanderu.bamboo.errors import (OperationError, NoItems, UnknownJobId)
 
