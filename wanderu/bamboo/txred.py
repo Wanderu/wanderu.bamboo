@@ -1,3 +1,7 @@
+# Py 3 Compatibility
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+
 from twisted.internet import reactor
 from twisted.internet import defer
 
@@ -25,7 +29,7 @@ def makeConnection(url, name,
     """
     host, port, dbid, password = parse_url(url)
     uuid = "%s:%s" % (host, port)
-    factory = TxRedisFactory(name, uuid, dbid, poolsize, isLazy,
+    factory = TxRedisFactory(name, uuid, int(dbid), poolsize, isLazy,
                             redis.ConnectionHandler, charset, password,
                             replyTimeout, convertNumbers)
     factory.continueTrying = reconnect

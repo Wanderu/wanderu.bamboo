@@ -33,7 +33,7 @@ def random_job_dict():
     c = "".join((choice(string.ascii_uppercase) for _ in xrange(3)))
     f = "".join((choice(string.ascii_uppercase) for _ in xrange(6)))
     t = "".join((choice(string.ascii_uppercase) for _ in xrange(6)))
-    s = "mongo"
+    s = "something"
     date = (datetime.utcnow() +
             timedelta(seconds=randrange(1, 24*60*60*60)))\
                 .strftime("%m/%d/%Y")

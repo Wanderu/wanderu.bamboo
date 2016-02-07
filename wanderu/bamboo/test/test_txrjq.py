@@ -5,11 +5,14 @@ from functools import partial
 from twisted.trial import unittest
 from twisted.internet import defer
 
-from wanderu.bamboo.txrjq import TxRedisJobQueue
+from wanderu.bamboo.txrjq import TxRedisJobQueue, TxRedisJobQueueView
 from wanderu.bamboo.test.util import (generate_jobs, job_cmp)
 from wanderu.bamboo.config import (NS_QUEUED, NS_WORKING, NS_SCHEDULED,
                                    NS_FAILED)
 from wanderu.bamboo.txred import JobScanner
+from wanderu.bamboo.errors import (NoItems, NormalOperationError,
+                                   JobExists, AbnormalOperationError,
+                                   UnknownJobId)
 
 def remove_keys(keys, rjq):
     if len(keys) > 0:
@@ -39,15 +42,16 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_add_consume_ack(self):
-        rjq = self.rjq
-        jobgen = generate_jobs()
-        job1 = next(jobgen)
-        res = yield rjq.enqueue(job1)
-        self.assertEqual(res, 1)
-        job1b = yield rjq.consume()
-        self.assertTrue(job_cmp(job1, job1b))
-        res = yield rjq.ack(job1b)
-        self.assertEqual(res, 1)
+        for rjq in (self.rjq,
+                TxRedisJobQueueView(self.rjq, self.rjq.namespace + ":MORE")):
+            jobgen = generate_jobs()
+            job1 = next(jobgen)
+            res = yield rjq.enqueue(job1)
+            self.assertEqual(res, 1)
+            job1b = yield rjq.consume()
+            self.assertTrue(job_cmp(job1, job1b))
+            res = yield rjq.ack(job1b)
+            self.assertEqual(res, 1)
 
     @defer.inlineCallbacks
     def test_client_name(self):
@@ -70,22 +74,29 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
         yield rjq.add(job1)
         yield rjq.add(job2)
 
-        def aggregateCb(jobs, job):
-            jobs.append(job)
+        # def aggregateCb(jobs, job):
+        #     jobs.append(job)
 
         # This method calls aggregateCb on retrieving each job.
         jobs = []
-        yield rjq.peek(partial(aggregateCb, jobs), NS_QUEUED)
+        # yield rjq.peek(partial(aggregateCb, jobs), NS_QUEUED)
+        yield rjq.peek(jobs.append, NS_QUEUED)
 
         self.assertTrue(job_cmp(job0, jobs[0]))
         self.assertTrue(job_cmp(job1, jobs[1]))
         self.assertTrue(job_cmp(job2, jobs[2]))
 
         jobs = []
-        yield rjq.peek(partial(aggregateCb, jobs), NS_QUEUED, count=2)
+        # yield rjq.peek(partial(aggregateCb, jobs), NS_QUEUED, count=2)
+        yield rjq.peek(jobs.append, NS_QUEUED, count=2)
         self.assertTrue(job_cmp(job0, jobs[0]))
         self.assertTrue(job_cmp(job1, jobs[1]))
         self.assertEqual(len(jobs), 2)
+
+        try:
+            yield rjq.peek(jobs.append, "INVALID_QUEUE_NAME")
+        except AbnormalOperationError as err:
+            pass
 
         # This method works like an iterator
         jobit = yield rjq.queue_iter(NS_QUEUED)
@@ -95,6 +106,30 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
         self.assertTrue(job_cmp(job0, job0b))
         self.assertTrue(job_cmp(job1, job1b))
         self.assertTrue(job_cmp(job2, job2b))
+
+    @defer.inlineCallbacks
+    def test_add_twice(self):
+        jobgen = generate_jobs()
+        job = next(jobgen)
+        # First time is good
+        yield self.rjq.add(job)
+        try:
+            # Second time raises `JobExists`
+            yield self.rjq.add(job)
+        except JobExists as err:
+            pass
+
+    @defer.inlineCallbacks
+    def test_get_job_by_id(self):
+        jobgen = generate_jobs()
+        job = next(jobgen)
+        yield self.rjq.add(job)
+        job2 = yield self.rjq.get(job.id)
+        self.assertEqual(job.id, job2.id)
+        try:
+            yield self.rjq.get(job.id + "INVALIDJOBID")
+        except UnknownJobId as err:
+            pass
 
     @defer.inlineCallbacks
     def test_scanner(self):
@@ -117,6 +152,23 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
         scanner = JobCollectScanner(self.rjq)
         yield scanner.scan(NS_QUEUED, count=20)
         self.assertEqual(len(scanner.jobs), 10)
+
+    @defer.inlineCallbacks
+    def test_consume_fail(self):
+        try:
+            nothing = yield self.rjq.consume()
+        except NoItems as err:
+            pass
+
+    def test_consume_fail2(self):
+        def checkErr(failure):
+            # Only succeed if failure is a NoItems exception
+            failure.trap(NoItems)
+
+        def checkRes(*args):
+            self.fail("Consume should have triggered the errback.")
+
+        return self.rjq.consume().addCallbacks(checkRes, checkErr)
 
     @defer.inlineCallbacks
     def test_consume(self):

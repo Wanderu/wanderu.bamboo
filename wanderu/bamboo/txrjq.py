@@ -1,15 +1,23 @@
+# Py 3 Compatibility
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+
 import logging
 
 import txredisapi as redis
 from twisted.internet import defer
+from twisted.python.failure import Failure
 
 from wanderu.bamboo.job import Job
 from wanderu.bamboo.txscript import Script
 from wanderu.bamboo.rjq import SCRIPT_NAMES, RedisJobQueue
 from wanderu.bamboo.io import read_lua_scripts
-from wanderu.bamboo.config import NS_JOB, QUEUE_NAMES
+from wanderu.bamboo.config import NS_JOB, QUEUE_NAMES, NS_QUEUED
 from wanderu.bamboo.errors import (message_to_error,
-                                   OperationError, UnknownJobId)
+                                   OperationError,
+                                   AbnormalOperationError,
+                                   NormalOperationError,
+                                   UnknownJobId)
 from wanderu.bamboo.util import utcunixts
 from wanderu.bamboo.txred import (makeConnection, makeSubscriber,
                                   zscan_items, JobScanner)
@@ -32,12 +40,17 @@ class TxRedisJobQueue(RedisJobQueue):
             name: Script(self.conn, script)
             for (name, script) in read_lua_scripts(SCRIPT_NAMES).items()
         }
+        # backwards compatibility
+        # for name, script in self.scripts.items():
+        #     setattr(self, "_{}".format(name), script.eval)
 
     def _op_error(self, failure, name):
         if failure.check(redis.ResponseError):
             # error translation
-            error("Error in %s: %s" % (name, failure))
-            raise message_to_error(failure.getErrorMessage())
+            converted_error = message_to_error(failure.getErrorMessage())
+            if isinstance(converted_error, AbnormalOperationError):
+                error("Error in %s: %s" % (name, failure))
+            return Failure(converted_error)
         return failure
 
     def op(self, name, keys, args):
@@ -47,8 +60,8 @@ class TxRedisJobQueue(RedisJobQueue):
         return d
 
     def can_consume(self):
-        """Returns True if there are jobs available to consume. False
-        otherwise.
+        """Returns a deferred that is called back with True if there are jobs
+        available to consume and False otherwise.
         """
         keys = (self.namespace,)
         args = (utcunixts(),)
@@ -63,17 +76,17 @@ class TxRedisJobQueue(RedisJobQueue):
         d.addCallback(super(TxRedisJobQueue, self).count)
         return d
 
-    def peek(self, cb, Q, count=None):
+    def peek(self, cb, Q=NS_QUEUED, count=None):
         """Returns a deferred that is called back (finishes) after all items
         have been exhausted.
 
         cb: Function. Takes 1 parameter, a job object. It is called
         for each returned job object in the queue, in priority order.
-        Q: String. The base name of the queue.
+        Q: String. Optional. The base name of the queue. Default: "QUEUED".
         count: Int. Optional. The maximum number of jobs to return.
         """
         if Q not in QUEUE_NAMES:
-            return defer.fail(OperationError("Invalid queue name: %s" % Q))
+            return defer.fail(AbnormalOperationError("Invalid queue name: %s" % Q))
 
         scanner = JobScanner(self)
         scanner.receivedJob = cb
@@ -152,3 +165,16 @@ class TxRedisJobQueue(RedisJobQueue):
     # recover(self, requeue_seconds=None)
     # maxfailed(self, val=None):
     # maxjobs(self, val=None):
+
+class TxRedisJobQueueView(TxRedisJobQueue):
+    __slots__ = ['rjq', 'namespace']
+
+    def __init__(self, rjq, namespace):
+        self.rjq = rjq
+        self.namespace = namespace
+
+    def __getattr__(self, attr):
+        """
+        __getattr__ handles attributes that are not found (member lookup fail)
+        """
+        return getattr(self.rjq, attr)

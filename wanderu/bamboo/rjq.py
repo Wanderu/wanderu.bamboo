@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Py 3 Compatibility
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+
 import logging
 import redis
 import sha
@@ -29,7 +33,10 @@ from wanderu.bamboo.config import (
                         NS_JOB, NS_QUEUED, NS_SCHEDULED, NS_SEP,
                         REQUEUE_TIMEOUT, WORKER_EXPIRATION)
 from wanderu.bamboo.errors import (message_to_error,
-                            OperationError, UnknownJobId)
+                                   OperationError,
+                                   AbnormalOperationError,
+                                   NormalOperationError,
+                                   UnknownJobId)
 
 logger = logging.getLogger(__name__)
 error  = logger.error
@@ -114,11 +121,12 @@ class RedisJobQueue(RedisJobQueueBase):
     def op(self, name, keys, args):
         try:
             res = getattr(self, "_"+name)(keys, args)
-        except RedisError, err:
-            error("Error in %s: %s" % (name, err))
-            raise message_to_error(err.message)
-            # raise OperationError("%s" % err)
-        return res
+            return res
+        except RedisError as err:
+            converted_error = message_to_error("%s" % err)
+            if isinstance(converted_error, AbnormalOperationError):
+                error("Error in %s: %s" % (name, err))
+            raise converted_error
 
     def peek(self, Q, count=None, withscores=False):
         """Use this function to retrieve Jobs via a queue iterator that

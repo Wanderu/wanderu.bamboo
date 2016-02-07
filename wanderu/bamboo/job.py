@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Py 3 Compatibility
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+
 from itertools import chain
 
 from wanderu.bamboo.util import twos, utcunixts
@@ -92,6 +96,17 @@ class GenericModel(object):
 
     def __ne__(self, other):
         return (not self.__eq__(other))
+
+    def __unicode__(self):
+        return "{klass}({params})".format(
+                klass=self.__class__.__name__,
+                params= ", ".join(("{k}={v}".format(k=k, v=unicode(v))
+                                   for k, v in sorted(self.as_dict().items())
+                                   if v is not None))
+                )
+
+    def __str__(self):
+        return unicode(self).encode("utf-8")
 
     def __repr__(self):
         """ob == eval(repr(ob))"""

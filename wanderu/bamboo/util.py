@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Py 3 Compatibility
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+
 from calendar import timegm
 from datetime import datetime
 from itertools import chain
@@ -31,7 +35,7 @@ def parse_url(url):
     host, path, password = map(unquote,
             (pr.hostname or "", pr.path or "", pr.password or ""))
     dbid = path[1:].split('/')[0]
-    return (host or "localhost", pr.port or 6379, dbid or None,
+    return (host or "localhost", pr.port or 6379, dbid or 0,
             password or None)
 
 def twos(l):

@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Py 3 Compatibility
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+
 import re
 
 JOB_STATE_ENQUEUED  = "enqueued"    # available for work on a queue
@@ -50,4 +54,6 @@ REQUEUE_TIMEOUT = 60*60   # seconds
 JOB_TIMEOUT = 60*60       # seconds
 WORKER_EXPIRATION = 5*60  # seconds
 
+# Is there a balanced pair of brackets {} in the string?
+# If so, then that's is what is hashed to determine the slot in redis cluster.
 RE_HASHSLOT = re.compile(r".*?{.*?}.*?")
