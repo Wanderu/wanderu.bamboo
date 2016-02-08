@@ -16,7 +16,7 @@ class Script(object):
         self.sha = ""
 
     def __call__(self, *args, **kwargs):
-        """Present a callable interface like the syncronous redis library."""
+        """Present a callable interface like the synchronous redis library."""
         return self.eval(*args, **kwargs)
 
     def _script_load_success(self, sha):
