@@ -9,7 +9,7 @@ from twisted.internet import defer
 from twisted.python.failure import Failure
 
 from wanderu.bamboo.job import Job
-from wanderu.bamboo.txscript import Script
+import wanderu.bamboo.txscript
 from wanderu.bamboo.rjq import SCRIPT_NAMES, RedisJobQueue
 from wanderu.bamboo.io import read_lua_scripts
 from wanderu.bamboo.config import NS_JOB, QUEUE_NAMES, NS_QUEUED
@@ -17,45 +17,36 @@ from wanderu.bamboo.errors import (message_to_error,
                                    OperationError,
                                    AbnormalOperationError,
                                    NormalOperationError,
-                                   UnknownJobId)
+                                   UnknownJobId, InvalidQueue)
 from wanderu.bamboo.util import utcunixts
 from wanderu.bamboo.txred import (makeConnection, makeSubscriber,
                                   zscan_items, JobScanner)
+from wanderu.bamboo.python import getNamespaceViewForQueue
 
 logger = logging.getLogger(__name__)
-error  = logger.error
-warn   = logger.warn
-info   = logger.info
-debug  = logger.debug
 
 class TxRedisJobQueue(RedisJobQueue):
+
+    RedisScript = wanderu.bamboo.txscript.Script
 
     def _init_connection(self, url):
         """conn: String. Redis connection URL string."""
         self.url = url
         self.conn = makeConnection(url or "", self.name)
 
-    def _load_lua_scripts(self):
-        self.scripts = {
-            name: Script(self.conn, script)
-            for (name, script) in read_lua_scripts(SCRIPT_NAMES).items()
-        }
-        # backwards compatibility
-        # for name, script in self.scripts.items():
-        #     setattr(self, "_{}".format(name), script.eval)
-
     def _op_error(self, failure, name):
         if failure.check(redis.ResponseError):
             # error translation
             converted_error = message_to_error(failure.getErrorMessage())
             if isinstance(converted_error, AbnormalOperationError):
-                error("Error in %s: %s" % (name, failure))
+                logger.error("Error in %s: %s" % (name, failure))
             return Failure(converted_error)
         return failure
 
-    def op(self, name, keys, args):
-        # call the script, returns a deferred
-        d = self.scripts[name].eval(keys, args)
+    def call_script(self, name, keys, args):
+        """Call the script, returns a deferred
+        """
+        d = self.scripts[name](keys, args)
         d.addErrback(self._op_error, name)
         return d
 
@@ -65,7 +56,7 @@ class TxRedisJobQueue(RedisJobQueue):
         """
         keys = (self.namespace,)
         args = (utcunixts(),)
-        d = self.op("can_consume", keys, args)
+        d = self.call_script("can_consume", keys, args)
         d.addCallback(lambda res: res > 0)
         return d
 
@@ -86,7 +77,7 @@ class TxRedisJobQueue(RedisJobQueue):
         count: Int. Optional. The maximum number of jobs to return.
         """
         if Q not in QUEUE_NAMES:
-            return defer.fail(AbnormalOperationError("Invalid queue name: %s" % Q))
+            return defer.fail(InvalidQueue("Invalid queue name: %s" % Q))
 
         scanner = JobScanner(self)
         scanner.receivedJob = cb
@@ -157,7 +148,7 @@ class TxRedisJobQueue(RedisJobQueue):
                 job_id or "",
                 utcunixts(),
                 self.worker_expiration)
-        return self.op("consume", keys, args) \
+        return self.call_script("consume", keys, args) \
                    .addCallback(lambda res: Job.from_string_list(res))
 
     # ack(self, job)
@@ -166,15 +157,13 @@ class TxRedisJobQueue(RedisJobQueue):
     # maxfailed(self, val=None):
     # maxjobs(self, val=None):
 
-class TxRedisJobQueueView(TxRedisJobQueue):
-    __slots__ = ['rjq', 'namespace']
+# Backwards compatibility
+def TxRedisJobQueueView(rjq, namespace):
+    """Create a proxy object of the provided TxRedisJobQueue instance that uses
+    the specified namespace instead of the original instance's namespace,
+    effectively making it operate on a different queue.
 
-    def __init__(self, rjq, namespace):
-        self.rjq = rjq
-        self.namespace = namespace
-
-    def __getattr__(self, attr):
-        """
-        __getattr__ handles attributes that are not found (member lookup fail)
-        """
-        return getattr(self.rjq, attr)
+    `rjq`: Instance of TxRedisJobQueue
+    `namespace`: String. The desired Queue's namespace.
+    """
+    return getNamespaceViewForQueue(rjq, namespace)

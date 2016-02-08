@@ -3,7 +3,7 @@ from random import choice
 from functools import partial
 
 from twisted.trial import unittest
-from twisted.internet import defer
+from twisted.internet import defer, task, reactor
 
 from wanderu.bamboo.txrjq import TxRedisJobQueue, TxRedisJobQueueView
 from wanderu.bamboo.test.util import (generate_jobs, job_cmp)
@@ -12,7 +12,8 @@ from wanderu.bamboo.config import (NS_QUEUED, NS_WORKING, NS_SCHEDULED,
 from wanderu.bamboo.txred import JobScanner
 from wanderu.bamboo.errors import (NoItems, NormalOperationError,
                                    JobExists, AbnormalOperationError,
-                                   UnknownJobId)
+                                   UnknownJobId, InvalidQueue)
+from wanderu.bamboo.util import utcunixts
 
 def remove_keys(keys, rjq):
     if len(keys) > 0:
@@ -74,12 +75,7 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
         yield rjq.add(job1)
         yield rjq.add(job2)
 
-        # def aggregateCb(jobs, job):
-        #     jobs.append(job)
-
-        # This method calls aggregateCb on retrieving each job.
         jobs = []
-        # yield rjq.peek(partial(aggregateCb, jobs), NS_QUEUED)
         yield rjq.peek(jobs.append, NS_QUEUED)
 
         self.assertTrue(job_cmp(job0, jobs[0]))
@@ -87,7 +83,6 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
         self.assertTrue(job_cmp(job2, jobs[2]))
 
         jobs = []
-        # yield rjq.peek(partial(aggregateCb, jobs), NS_QUEUED, count=2)
         yield rjq.peek(jobs.append, NS_QUEUED, count=2)
         self.assertTrue(job_cmp(job0, jobs[0]))
         self.assertTrue(job_cmp(job1, jobs[1]))
@@ -96,7 +91,7 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
         try:
             yield rjq.peek(jobs.append, "INVALID_QUEUE_NAME")
         except AbnormalOperationError as err:
-            pass
+            assert isinstance(err, InvalidQueue)
 
         # This method works like an iterator
         jobit = yield rjq.queue_iter(NS_QUEUED)
@@ -209,6 +204,72 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
         self.assertEqual(len(working), 0)
         wct = yield self.rjq.count(NS_WORKING)
         self.assertEqual(wct, 0)
+
+    @defer.inlineCallbacks
+    def consume_fail(self, job1a):
+        yield self.rjq.enqueue(job1a)
+        t = utcunixts()+1
+        scheduled_jobs = yield self.rjq.count(NS_SCHEDULED)
+        self.assertEqual(scheduled_jobs, 0)
+        queued_jobs = yield self.rjq.count(NS_QUEUED)
+        self.assertEqual(queued_jobs, 1)
+        job1b = yield self.rjq.consume()
+        self.assertTrue(job_cmp(job1a, job1b))
+        yield self.rjq.fail(job1b, requeue_seconds=1)
+        scheduled_jobs = yield self.rjq.count(NS_SCHEDULED)
+        self.assertEqual(scheduled_jobs, 1)
+        can_consume = yield self.rjq.can_consume()
+        self.assertFalse(can_consume)
+        yield task.deferLater(reactor, 1.2, lambda *args: None)
+        can_consume = yield self.rjq.can_consume()
+        self.assertTrue(can_consume)
+        job1c = yield self.rjq.consume()
+        self.assertTrue(job_cmp(job1a, job1c))
+        working_jobs = yield self.rjq.count(NS_WORKING)
+        self.assertEqual(working_jobs, 1)
+        defer.returnValue(job1c)
+
+    @defer.inlineCallbacks
+    def test_tx_consume_fail_ack(self):
+        yield self.rjq.maxfailed(1)
+        jobgen = generate_jobs()
+        job1a = next(jobgen)
+        job1c = yield self.consume_fail(job1a)
+        yield self.rjq.ack(job1c)
+        working_jobs = yield self.rjq.count(NS_WORKING)
+        self.assertEqual(working_jobs, 0)
+
+    @defer.inlineCallbacks
+    def test_tx_consume_fail_fail(self):
+        yield self.rjq.maxfailed(1)
+        jobgen = generate_jobs()
+        job1a = next(jobgen)
+        job1c = yield self.consume_fail(job1a)
+        yield self.rjq.fail(job1c)
+        working_jobs = yield self.rjq.count(NS_WORKING)
+        self.assertEqual(working_jobs, 0)
+        scheduled_jobs = yield self.rjq.count(NS_SCHEDULED)
+        self.assertEqual(scheduled_jobs, 0)
+        failed_jobs = yield self.rjq.count(NS_FAILED)
+        self.assertEqual(failed_jobs, 1)
+
+    @defer.inlineCallbacks
+    def test_tx_schedule_1(self):
+        can_consume = yield self.rjq.can_consume()
+        self.assertFalse(can_consume)
+        jobgen = generate_jobs()
+        job1a = next(jobgen)
+        t = utcunixts()+1
+        yield self.rjq.schedule(job1a, t)
+        scheduled_jobs = yield self.rjq.count(NS_SCHEDULED)
+        self.assertEqual(scheduled_jobs, 1)
+        can_consume = yield self.rjq.can_consume()
+        self.assertFalse(can_consume)
+        yield task.deferLater(reactor, 1.2, lambda *args: None)
+        can_consume = yield self.rjq.can_consume()
+        self.assertTrue(can_consume)
+        job1b = yield self.rjq.consume()
+        self.assertTrue(job_cmp(job1a, job1b))
 
     # def test_subscribe
 

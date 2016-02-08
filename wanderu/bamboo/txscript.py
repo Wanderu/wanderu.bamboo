@@ -6,10 +6,18 @@ from twisted.internet import defer
 import txredisapi as redis
 
 class Script(object):
-    def __init__(self, conn, script):
-        self.conn = conn
+    """A script object that maintains most of the interface from the synchronous
+    redis library (`redis.client.Script`), which includes the attributes
+    `registered_client`, `script`, and `sha`, as well as being a callable class.
+    """
+    def __init__(self, registered_client, script):
+        self.registered_client = registered_client
         self.script = script
-        self.sha = None
+        self.sha = ""
+
+    def __call__(self, *args, **kwargs):
+        """Present a callable interface like the syncronous redis library."""
+        return self.eval(*args, **kwargs)
 
     def _script_load_success(self, sha):
         self.sha = sha
@@ -17,7 +25,7 @@ class Script(object):
 
     def _load_script(self):
         # returns a deferred that returns the script hash
-        d = self.conn.script_load(self.script)
+        d = self.registered_client.script_load(self.script)
         d.addCallback(self._script_load_success)
         return d
 
@@ -33,7 +41,7 @@ class Script(object):
         return failure
 
     def _eval(self, sha, keys, args):
-        d = self.conn.evalsha(sha, keys, args)
+        d = self.registered_client.evalsha(sha, keys, args)
         d.addErrback(self._eval_failure, keys, args)
         return d
 

@@ -18,6 +18,7 @@ from __future__ import (absolute_import, division, print_function,
 
 import logging
 import redis
+import redis.client
 import sha
 from types import StringTypes
 
@@ -36,13 +37,10 @@ from wanderu.bamboo.errors import (message_to_error,
                                    OperationError,
                                    AbnormalOperationError,
                                    NormalOperationError,
-                                   UnknownJobId)
+                                   UnknownJobId, InvalidQueue)
+from wanderu.bamboo.python import getNamespaceViewForQueue
 
 logger = logging.getLogger(__name__)
-error  = logger.error
-warn   = logger.warn
-info   = logger.info
-debug  = logger.debug
 
 SCRIPT_NAMES = [
     'ack.lua',
@@ -97,35 +95,32 @@ class RedisJobQueue(RedisJobQueueBase):
     """
     RedisJobQueue(namespace, name="worker1", conn="localhost/0")
     """
+    RedisScript = redis.client.Script
 
     def _init_connection(self, conn):
         self.conn = get_redis_connection(REDIS_CONN if conn is None else conn)
         self.conn.client_setname(self.name)  # unique name for this client
 
     def _load_lua_scripts(self):
-        script_map = read_lua_scripts(SCRIPT_NAMES)
 
-        # load scripts and/or templates and assign them as attribute names
-        # to the class, prefixed by an underscore
-        for name, contents in script_map.items():
-            script = self.conn.register_script(contents)
-            setattr(self, "_{}".format(name), script)
+        self.scripts = {
+            name: self.RedisScript(self.conn, contents)
+            for name, contents in read_lua_scripts(SCRIPT_NAMES).items()
+        }
 
-            # Additional info for runtime profiling using redis' SLOWLOG
-            # Match slowlog entries to these log messages.
-            script_sha = sha.sha(contents).hexdigest()
-            info("script name: %s sha: %s",
-                    name, script_sha,
-                    extra={'sha': script_sha, 'script': name})
+        if logger.isEnabledFor(logging.DEBUG):
+            for name, script in self.scripts.items():
+                script_sha = sha.sha(script.script).hexdigest()
+                logger.debug("script loaded", extra={'sha': script_sha, 'scriptName': name})
 
-    def op(self, name, keys, args):
+    def call_script(self, name, keys, args):
         try:
-            res = getattr(self, "_"+name)(keys, args)
+            res = self.scripts[name](keys, args)
             return res
         except RedisError as err:
             converted_error = message_to_error("%s" % err)
             if isinstance(converted_error, AbnormalOperationError):
-                error("Error in %s: %s" % (name, err))
+                logger.error("Error in %s: %s" % (name, err))
             raise converted_error
 
     def peek(self, Q, count=None, withscores=False):
@@ -134,7 +129,7 @@ class RedisJobQueue(RedisJobQueueBase):
         a queue that changes over time.
         """
         if Q not in QUEUE_NAMES:
-            raise OperationError("Invalid queue name: %s" % Q)
+            raise InvalidQueue("Invalid queue name: %s" % Q)
 
         for jid, score in self.conn.zscan_iter(self.key(Q), count=count):
             try:
@@ -151,7 +146,7 @@ class RedisJobQueue(RedisJobQueueBase):
         """
         keys = (self.namespace,)
         args = (utcunixts(),)
-        res = self.op("can_consume", keys, args)
+        res = self.call_script("can_consume", keys, args)
         return res > 0
 
     def count(self, queue):
@@ -232,7 +227,7 @@ class RedisJobQueue(RedisJobQueueBase):
         keys = (self.namespace,)
         # <queue> <priority> <jobid> <force> <key> <val> [<key> <val> ...]
         args = (NS_QUEUED, job.priority, job.id, "0") + job.as_string_tup()
-        return self.op("enqueue", keys, args)
+        return self.call_script("enqueue", keys, args)
 
     enqueue = add
 
@@ -240,7 +235,7 @@ class RedisJobQueue(RedisJobQueueBase):
         keys = (self.namespace,)
         # <queue> <priority> <jobid> <force> <key> <val> [<key> <val> ...]
         args = (NS_QUEUED, priority, job.id, "1") + job.as_string_tup()
-        return self.op("enqueue", keys, args)
+        return self.call_script("enqueue", keys, args)
 
     def schedule(self, job, dt):
         """Enqueue a Job directly onto the SCHEDULED queue.
@@ -250,7 +245,7 @@ class RedisJobQueue(RedisJobQueueBase):
         keys = (self.namespace,)
         # <queue> <priority> <jobid> <force> <key> <val> [<key> <val> ...]
         args = (NS_SCHEDULED, dt, job.id, "0") + job.as_string_tup()
-        return self.op("enqueue", keys, args)
+        return self.call_script("enqueue", keys, args)
 
     def reschedule(self, job, dt):
         """Reschedule an existing job no matter the parameters.
@@ -263,7 +258,7 @@ class RedisJobQueue(RedisJobQueueBase):
         keys = (self.namespace,)
         # <queue> <priority> <jobid> <force> <key> <val> [<key> <val> ...]
         args = (NS_SCHEDULED, dt, job.id, "1") + job.as_string_tup()
-        return self.op("enqueue", keys, args)
+        return self.call_script("enqueue", keys, args)
 
     def get(self, job_id):
         """
@@ -291,9 +286,7 @@ class RedisJobQueue(RedisJobQueueBase):
                 job_id or "",
                 utcunixts(),
                 self.worker_expiration)
-        # debug("consume %s %s", keys, args)
-        res = self.op("consume", keys, args)
-        # debug("consume results: %s", res)
+        res = self.call_script("consume", keys, args)
         job = Job.from_string_list(res)
         return job
 
@@ -302,7 +295,7 @@ class RedisJobQueue(RedisJobQueueBase):
         keys = (self.namespace,)
         # <jobid>
         args = (job.id,)
-        res = self.op("ack", keys, args)
+        res = self.call_script("ack", keys, args)
         return res
 
     def fail(self, job, requeue_seconds=None):
@@ -314,7 +307,7 @@ class RedisJobQueue(RedisJobQueueBase):
         args = (job.id,
                 utcunixts(),
                 requeue_seconds)
-        res = self.op("fail", keys, args)
+        res = self.call_script("fail", keys, args)
         return res
 
     def recover(self, requeue_seconds=None):
@@ -335,7 +328,7 @@ class RedisJobQueue(RedisJobQueueBase):
                 requeue_seconds)
 
         # list of job IDs that have been recovered
-        recovered_jobs = self.op("recover", keys, args)
+        recovered_jobs = self.call_script("recover", keys, args)
         return recovered_jobs
 
     def maxfailed(self, val=None):
@@ -351,7 +344,7 @@ class RedisJobQueue(RedisJobQueueBase):
         else:
             args = (val,)
 
-        res = self.op("maxfailed", keys, args)
+        res = self.call_script("maxfailed", keys, args)
         return res
 
     def maxjobs(self, val=None):
@@ -367,19 +360,21 @@ class RedisJobQueue(RedisJobQueueBase):
         else:
             args = (val,)
 
-        res = self.op("maxjobs", keys, args)
+        res = self.call_script("maxjobs", keys, args)
         return res
 
+def RedisJobQueueView(rjq, namespace):
+    return getNamespaceViewForQueue(rjq, namespace)
 
-class RedisJobQueueView(RedisJobQueue):
-    __slots__ = ['rjq', 'namespace']
+# class RedisJobQueueView(RedisJobQueue):
+#     __slots__ = ['rjq', 'namespace']
 
-    def __init__(self, rjq, namespace):
-        self.rjq = rjq
-        self.namespace = namespace
+#     def __init__(self, rjq, namespace):
+#         self.rjq = rjq
+#         self.namespace = namespace
 
-    def __getattr__(self, attr):
-        """
-        __getattr__ handles attributes that are not found (member lookup fail)
-        """
-        return getattr(self.rjq, attr)
+#     def __getattr__(self, attr):
+#         """
+#         __getattr__ handles attributes that are not found (member lookup fail)
+#         """
+#         return getattr(self.rjq, attr)

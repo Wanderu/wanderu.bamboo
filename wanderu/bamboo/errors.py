@@ -54,6 +54,11 @@ class InvalidParameter(AbnormalOperationError):
 class InvalidClientName(AbnormalOperationError):
     pass
 
+class InvalidQueue(AbnormalOperationError):
+    """The queue does not exist or an operation was asked to be peformed on a
+    queue for which it is invalid to perform that operation.
+    """
+
 # A mapping from the Lua script error reply codes to exception classes.
 SCRIPT_ERROR_CODES_TO_EXCEPTIONS = {
     # Normal
@@ -64,7 +69,8 @@ SCRIPT_ERROR_CODES_TO_EXCEPTIONS = {
     'INVALID_PARAMETER': InvalidParameter,
     'JOB_EXISTS': JobExists,
     'UNKNOWN_JOB_ID': UnknownJobId,
-    'INVALID_CLIENT_NAME': InvalidClientName
+    'INVALID_CLIENT_NAME': InvalidClientName,
+    'INVALID_QUEUE': InvalidQueue
 }
 
 def message_to_error(msg):
