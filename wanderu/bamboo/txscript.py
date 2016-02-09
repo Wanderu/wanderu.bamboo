@@ -13,31 +13,26 @@ class Script(object):
     def __init__(self, registered_client, script):
         self.registered_client = registered_client
         self.script = script
-        self.sha = ""
-
-    def __call__(self, *args, **kwargs):
-        """Present a callable interface like the synchronous redis library."""
-        return self.eval(*args, **kwargs)
+        self.sha = None
 
     def _script_load_success(self, sha):
         self.sha = sha
         return sha
 
     def _load_script(self):
-        # returns a deferred that returns the script hash
-        d = self.registered_client.script_load(self.script)
-        d.addCallback(self._script_load_success)
-        return d
+        """
+        Returns a deferred that is called back with the script sha
+        """
+        return self.registered_client.script_load(self.script)\
+                   .addCallback(self._script_load_success)
 
     def _eval_failure(self, failure, keys, args):
+        # If redis doesn't know about the script, then re-add it.
+        # This can happen during a service restart, for example.
         if failure.check(redis.ScriptDoesNotExist) is not None:
-            # reload script
-            d = self._load_script()
-            # next callback gets the sha
-            d.addCallback(self._eval, keys, args)
-            return d
+            return self._load_script().addCallback(self._eval, keys, args)
 
-        # continue the failure
+        # Otherwise continue the failure
         return failure
 
     def _eval(self, sha, keys, args):
@@ -45,11 +40,11 @@ class Script(object):
         d.addErrback(self._eval_failure, keys, args)
         return d
 
-    def eval(self, keys=[], args=[]):
-        if self.sha is None:
-            d = self._load_script()
-        else:
-            d = defer.succeed(self.sha)
-
+    def __call__(self, keys=[], args=[]):
+        """
+        Present a callable interface like the synchronous redis library
+        """
+        # A deferred that is called back with the script sha
+        d = self._load_script() if self.sha is None else defer.succeed(self.sha)
         d.addCallback(self._eval, keys, args)
         return d

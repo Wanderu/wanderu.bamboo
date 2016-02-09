@@ -16,6 +16,7 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
+import uuid
 from calendar import timegm
 from datetime import datetime
 from itertools import chain
@@ -26,8 +27,24 @@ from random import choice
 from uuid import uuid1
 from urlparse import urlparse
 from urllib import unquote
+from wanderu.bamboo.config import RE_HASHSLOT
 
 MS_TO_SEC = 10**6
+
+def makeClusterNamespace(namespace):
+    """ref: Redis Cluster key hashing for slot selection.
+
+    >>> makeClusterNamespace("HELLO:WORLD") == "{HELLO:WORLD}"
+    True
+    >>> makeClusterNamespace("{HELLO:WORLD}") == "{HELLO:WORLD}"
+    True
+    >>> makeClusterNamespace("{HELLO}:WORLD") == "{HELLO}:WORLD"
+    True
+    >>> makeClusterNamespace("HELLO:{WORLD}") == "HELLO:{WORLD}"
+    True
+    """
+    return RE_HASHSLOT.match(namespace) and namespace \
+                        or ("{%s}" % namespace)
 
 def parse_url(url):
     """url: redis://localhost:6379/0"""
@@ -89,3 +106,6 @@ def gen_worker_name():
         return name_for_host()
     except:
         return gen_random_name()
+
+def unique_job_id():
+    return uuid.uuid1().hex
