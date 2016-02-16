@@ -32,6 +32,7 @@ from wanderu.bamboo.io import read_lua_scripts
 from wanderu.bamboo.config import (
                         RE_HASHSLOT, REDIS_CONN, QUEUE_NAMES,
                         NS_JOB, NS_QUEUED, NS_SCHEDULED, NS_SEP,
+                        NS_FAILED, NS_WORKING,
                         REQUEUE_TIMEOUT, WORKER_EXPIRATION)
 from wanderu.bamboo.errors import (message_to_error,
                                    OperationError,
@@ -46,6 +47,7 @@ SCRIPT_NAMES = [
     'ack.lua',
     'cancel.lua',
     'close.lua',
+    'clear.lua',
     'can_consume.lua',
     'consume.lua',
     'enqueue.lua',
@@ -123,6 +125,49 @@ class RedisJobQueue(RedisJobQueueBase):
                 logger.error("Error in %s: %s" % (name, err))
             raise converted_error
 
+    def clear(self, queues=(NS_QUEUED, NS_SCHEDULED, NS_FAILED, NS_WORKING)):
+        """
+        """
+        # for queue in queues:
+        #     job_ids = self.conn.zscan_iter(_k(queue))
+        #     for jid, score in job_ids:
+        #         self.conn.delete(_k(NS_JOB, jid))
+        keys = (self.namespace,)
+        args = queues
+        res = self.call_script("clear", keys, args)
+        return res
+
+    # def delete(self,
+    #            queues=(NS_QUEUED, NS_SCHEDULED, NS_FAILED, NS_WORKING),
+    #            keys=(NS_MAXJOBS, NS_MAXFAILED),
+    #            ns_sets=(NS_WORKERS, NS_ACTIVE)):
+    #     """Delete all known queue entries under this namespace.
+    #     Warning: This removes this entire namespace including all
+    #     jobs in it.
+
+    #     TODO: Tests
+    #     """
+    #     logger.warn("Deleting entire namespace: %s", self.namespace)
+    #     _k = self._key
+    #     pipe = self.conn.pipeline()
+
+    #     for queue in queues:
+    #         job_ids = self.conn.zscan_iter(_k(queue))
+    #         for jid, score in job_ids:
+    #             pipe.delete(_k(NS_JOB, jid))
+    #         pipe.delete(_k(queue))
+
+    #     for key in keys:
+    #         pipe.delete(_k(key))
+
+    #     for namespace in ns_sets:
+    #         for cid in self.conn.smembers(_k(namespace)):
+    #             pipe.delete(_k(namespace, cid))
+    #         pipe.delete(_k(namespace))
+
+    #     pipe.execute()
+
+
     def peek(self, Q, count=None, withscores=False):
         """Use this function to retrieve Jobs via a queue iterator that
         retrieves one job at a time from the database. The iterator works with
@@ -148,6 +193,15 @@ class RedisJobQueue(RedisJobQueueBase):
         args = (utcunixts(),)
         res = self.call_script("can_consume", keys, args)
         return res > 0
+
+    def cancel(self, job):
+        """
+        job: Job object or Job ID string.
+        """
+        jobid = job if isinstance(job, StringTypes) else job.id
+        keys = (self.namespace,)
+        args = (jobid,)
+        return self.call_script("cancel", keys, args)
 
     def count(self, queue):
         """Return the number of items in a given queue."""
@@ -231,10 +285,10 @@ class RedisJobQueue(RedisJobQueueBase):
 
     enqueue = add
 
-    def requeue(self, job, priority):
+    def requeue(self, job):
         keys = (self.namespace,)
         # <queue> <priority> <jobid> <force> <key> <val> [<key> <val> ...]
-        args = (NS_QUEUED, priority, job.id, "1") + job.as_string_tup()
+        args = (NS_QUEUED, job.priority, job.id, "1") + job.as_string_tup()
         return self.call_script("enqueue", keys, args)
 
     def schedule(self, job, dt):

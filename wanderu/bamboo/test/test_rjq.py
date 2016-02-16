@@ -231,7 +231,8 @@ class TestEnqueue(TCBase, unittest.TestCase):
         self.assertEqual(rjq.get(jobid).priority, 5)
         self.assertEqual(prio, 5)
 
-        rjq.requeue(job1a, 6)
+        job1a.priority = 6
+        rjq.requeue(job1a)
 
         job1a, prio = next(rjq.queue_iter(NS_QUEUED, withscores=True))
         self.assertEqual(rjq.get(jobid).priority, 6)

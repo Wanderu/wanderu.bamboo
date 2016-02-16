@@ -48,7 +48,7 @@ class TxRedisJobQueue(RedisJobQueue):
         self.url = url
         self.conn = makeConnection(url or "", self.name)
 
-    def _op_error(self, failure, name):
+    def _script_error(self, failure, name):
         if failure.check(redis.ResponseError):
             # error translation
             converted_error = message_to_error(failure.getErrorMessage())
@@ -60,9 +60,8 @@ class TxRedisJobQueue(RedisJobQueue):
     def call_script(self, name, keys, args):
         """Call the script, returns a deferred
         """
-        d = self.scripts[name](keys, args)
-        d.addErrback(self._op_error, name)
-        return d
+        return self.scripts[name](keys, args)\
+                   .addErrback(self._script_error, name)
 
     def can_consume(self):
         """Returns a deferred that is called back with True if there are jobs
@@ -70,16 +69,14 @@ class TxRedisJobQueue(RedisJobQueue):
         """
         keys = (self.namespace,)
         args = (utcunixts(),)
-        d = self.call_script("can_consume", keys, args)
-        d.addCallback(lambda res: res > 0)
-        return d
+        return self.call_script("can_consume", keys, args)\
+                   .addCallback(lambda res: res > 0)
 
     def count(self, queue):
         # Wrap the existing method in a deferred due to how it raises
         # exceptions.
-        d = defer.succeed(queue)
-        d.addCallback(super(TxRedisJobQueue, self).count)
-        return d
+        return defer.succeed(queue)\
+                    .addCallback(super(TxRedisJobQueue, self).count)
 
     def peek(self, cb, Q=NS_QUEUED, count=None):
         """Returns a deferred that is called back (finishes) after all items
@@ -89,14 +86,19 @@ class TxRedisJobQueue(RedisJobQueue):
         for each returned job object in the queue, in priority order.
         Q: String. Optional. The base name of the queue. Default: "QUEUED".
         count: Int. Optional. The maximum number of jobs to return.
+
+        Example usage:
+        ```
+        >> jobs = []
+        >> yield queue.peek(jobs.append, NS_QUEUED, 10)
+        ```
         """
         if Q not in QUEUE_NAMES:
             return defer.fail(InvalidQueue("Invalid queue name: %s" % Q))
 
         scanner = JobScanner(self)
         scanner.receivedJob = cb
-        d = scanner.scan(Q, count=count)
-        return d
+        return scanner.scan(Q, count=count)
 
     @defer.inlineCallbacks
     def queue_iter(self, Q, count=None):
@@ -131,12 +133,11 @@ class TxRedisJobQueue(RedisJobQueue):
         Use conn.unsubscribe("") to no longer received messsages.
         """
         conn = makeSubscriber(self.url, self.name, callback)
-        d = conn.subscribe([self.key(q) for q in QUEUE_NAMES])
-        d.addCallback(lambda *a: conn)
-        return d
+        return conn.subscribe([self.key(q) for q in QUEUE_NAMES])\
+                   .addCallback(lambda *a: conn)
 
     # add(self, job)  # Alias: enqueue
-    # requeue(self, job, priority)
+    # requeue(self, job)
     # schedule(self, job, dt)
     # reschedule(self, job, dt)
 

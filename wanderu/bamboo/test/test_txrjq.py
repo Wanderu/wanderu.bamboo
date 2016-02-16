@@ -1,3 +1,4 @@
+import logging
 import string
 from random import choice
 from functools import partial
@@ -12,8 +13,10 @@ from wanderu.bamboo.config import (NS_QUEUED, NS_WORKING, NS_SCHEDULED,
 from wanderu.bamboo.txred import JobScanner
 from wanderu.bamboo.errors import (NoItems, NormalOperationError,
                                    JobExists, AbnormalOperationError,
-                                   UnknownJobId, InvalidQueue)
+                                   JobInWork, UnknownJobId, InvalidQueue)
 from wanderu.bamboo.util import utcunixts
+
+logger = logging.getLogger(__name__)
 
 def remove_keys(keys, rjq):
     if len(keys) > 0:
@@ -40,6 +43,8 @@ class TXTCBase(object):
         return clear_ns(self.rjq).addCallback(self._disconnect)
 
 class TestEnqueue(TXTCBase, unittest.TestCase):
+
+    # TODO: Test add, consume, requeue/reschedule/schedule same job (fail)
 
     @defer.inlineCallbacks
     def test_add_consume_ack(self):
@@ -164,6 +169,49 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
             self.fail("Consume should have triggered the errback.")
 
         return self.rjq.consume().addCallbacks(checkRes, checkErr)
+
+    @defer.inlineCallbacks
+    def test_add_cancel(self):
+        can_consume = yield self.rjq.can_consume()
+        self.assertFalse(can_consume)
+        jobgen = generate_jobs()
+        job1a = next(jobgen)
+        yield self.rjq.add(job1a)
+        can_consume = yield self.rjq.can_consume()
+        self.assertTrue(can_consume)
+        yield self.rjq.cancel(job1a)
+        can_consume = yield self.rjq.can_consume()
+        self.assertFalse(can_consume)
+
+    @defer.inlineCallbacks
+    def test_add_consume_cancel_ack_cancel(self):
+        can_consume = yield self.rjq.can_consume()
+        self.assertFalse(can_consume)
+        jobgen = generate_jobs()
+        job1a = next(jobgen)
+
+        # add
+        yield self.rjq.add(job1a)
+        can_consume = yield self.rjq.can_consume()
+        self.assertTrue(can_consume)
+
+        # consume
+        job1b = yield self.rjq.consume()
+        self.assertTrue(job_cmp(job1a, job1b))
+
+        # cancel should fail with JobInWork
+        try:
+            yield self.rjq.cancel(job1a)
+        except JobInWork as exc:
+            logger.info(exc)
+
+        yield self.rjq.ack(job1b)
+
+        # cancel should fail with UnknownJobId
+        try:
+            yield self.rjq.cancel(job1a)
+        except UnknownJobId as exc:
+            logger.info(exc)
 
     @defer.inlineCallbacks
     def test_consume(self):
