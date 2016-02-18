@@ -32,8 +32,8 @@ from wanderu.bamboo.io import read_lua_scripts
 from wanderu.bamboo.config import (
                         RE_HASHSLOT, REDIS_CONN, QUEUE_NAMES,
                         NS_JOB, NS_QUEUED, NS_SCHEDULED, NS_SEP,
-                        NS_FAILED, NS_WORKING,
-                        REQUEUE_TIMEOUT, WORKER_EXPIRATION)
+                        NS_FAILED, NS_WORKING, NS_WORKERS,
+                        NS_ACTIVE, REQUEUE_TIMEOUT, WORKER_EXPIRATION)
 from wanderu.bamboo.errors import (message_to_error,
                                    OperationError,
                                    AbnormalOperationError,
@@ -416,6 +416,19 @@ class RedisJobQueue(RedisJobQueueBase):
 
         res = self.call_script("maxjobs", keys, args)
         return res
+
+    def workers(self):
+        return self.conn.smembers(self.key(NS_WORKERS))
+
+    def jobs_for_worker(self, worker_name):
+        return self.conn.smembers(self.key(NS_WORKERS, worker_name))
+
+    def active(self):
+        workers = []
+        for worker in self.workers():
+            if self.conn.exists(self.key(NS_WORKERS, worker, NS_ACTIVE)):
+                workers.append(worker)
+        return workers
 
 def RedisJobQueueView(rjq, namespace):
     return getNamespaceViewForQueue(rjq, namespace)

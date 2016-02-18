@@ -26,7 +26,8 @@ from wanderu.bamboo.job import Job
 import wanderu.bamboo.txscript
 from wanderu.bamboo.rjq import SCRIPT_NAMES, RedisJobQueue
 from wanderu.bamboo.io import read_lua_scripts
-from wanderu.bamboo.config import NS_JOB, QUEUE_NAMES, NS_QUEUED
+from wanderu.bamboo.config import (NS_JOB, QUEUE_NAMES, NS_QUEUED,
+                                   NS_WORKERS, NS_ACTIVE)
 from wanderu.bamboo.errors import (message_to_error,
                                    OperationError,
                                    AbnormalOperationError,
@@ -171,6 +172,15 @@ class TxRedisJobQueue(RedisJobQueue):
     # recover(self, requeue_seconds=None)
     # maxfailed(self, val=None):
     # maxjobs(self, val=None):
+
+    @defer.inlineCallbacks
+    def active(self):
+        workers = []
+        for worker in (yield self.workers()):
+            exists = yield self.conn.exists(self.key(NS_WORKERS, worker, NS_ACTIVE))
+            if exists:
+                workers.append(worker)
+        defer.returnValue(workers)
 
 # Backwards compatibility
 def TxRedisJobQueueView(rjq, namespace):
