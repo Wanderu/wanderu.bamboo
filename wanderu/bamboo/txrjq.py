@@ -177,8 +177,7 @@ class TxRedisJobQueue(RedisJobQueue):
     def active(self):
         workers = []
         for worker in (yield self.workers()):
-            exists = yield self.conn.exists(self.key(NS_WORKERS, worker, NS_ACTIVE))
-            if exists:
+            if (yield self.conn.exists(self.key(NS_WORKERS, worker, NS_ACTIVE))):
                 workers.append(worker)
         defer.returnValue(workers)
 
