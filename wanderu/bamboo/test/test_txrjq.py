@@ -43,8 +43,6 @@ class TXTCBase(object):
 
 class TestEnqueue(TXTCBase, unittest.TestCase):
 
-    # TODO: Test add, consume, requeue/reschedule/schedule same job (fail)
-
     @defer.inlineCallbacks
     def test_add_clear(self):
         rjq = self.rjq
@@ -150,6 +148,21 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
         self.assertTrue(job_cmp(job0, job0b))
         self.assertTrue(job_cmp(job1, job1b))
         self.assertTrue(job_cmp(job2, job2b))
+
+    @defer.inlineCallbacks
+    def test_add_consume_add_again(self):
+        rjq = self.rjq
+        jobgen = generate_jobs()
+        job1 = next(jobgen)
+
+        yield rjq.enqueue(job1)
+        job1consumed = yield rjq.consume()
+
+        try:
+            # Second time raises `JobExists`
+            yield self.rjq.add(job1)
+        except JobInWork:
+            pass
 
     @defer.inlineCallbacks
     def test_add_twice(self):
