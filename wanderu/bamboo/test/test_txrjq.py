@@ -89,6 +89,9 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
         can_consume = yield rjq.can_consume()
         self.assertTrue(can_consume)
 
+        number_enqueued = yield rjq.count(NS_SCHEDULED)
+        self.assertEqual(number_enqueued, 1)
+
     @defer.inlineCallbacks
     def test_add_consume_ack(self):
         jobgen = generate_jobs()
