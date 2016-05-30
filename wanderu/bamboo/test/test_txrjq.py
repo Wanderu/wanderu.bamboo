@@ -161,7 +161,7 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
         try:
             # Second time raises `JobExists`
             yield self.rjq.add(job)
-        except JobExists as err:
+        except JobExists:
             pass
 
     @defer.inlineCallbacks
@@ -173,7 +173,7 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
         self.assertEqual(job.id, job2.id)
         try:
             yield self.rjq.get(job.id + "INVALIDJOBID")
-        except UnknownJobId as err:
+        except UnknownJobId:
             pass
 
     @defer.inlineCallbacks
@@ -201,8 +201,8 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
     @defer.inlineCallbacks
     def test_consume_fail(self):
         try:
-            nothing = yield self.rjq.consume()
-        except NoItems as err:
+            yield self.rjq.consume()
+        except NoItems:
             pass
 
     def test_consume_fail2(self):
@@ -301,7 +301,6 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
     @defer.inlineCallbacks
     def consume_fail(self, job1a):
         yield self.rjq.enqueue(job1a)
-        t = utcunixts()+1
         scheduled_jobs = yield self.rjq.count(NS_SCHEDULED)
         self.assertEqual(scheduled_jobs, 0)
         queued_jobs = yield self.rjq.count(NS_QUEUED)
