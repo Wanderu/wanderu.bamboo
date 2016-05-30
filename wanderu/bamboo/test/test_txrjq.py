@@ -1,7 +1,6 @@
 import logging
 import string
 from random import choice
-from functools import partial
 
 from twisted.trial import unittest
 from twisted.internet import defer, task, reactor
