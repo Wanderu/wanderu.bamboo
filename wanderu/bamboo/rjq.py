@@ -125,13 +125,10 @@ class RedisJobQueue(RedisJobQueueBase):
                 logger.error("Error in %s: %s" % (name, err))
             raise converted_error
 
-    def clear(self, queues=(NS_QUEUED, NS_SCHEDULED, NS_FAILED, NS_WORKING)):
+    def clear(self, queues=(NS_QUEUED, NS_SCHEDULED, NS_FAILED)):
         """
         """
-        # for queue in queues:
-        #     job_ids = self.conn.zscan_iter(_k(queue))
-        #     for jid, score in job_ids:
-        #         self.conn.delete(_k(NS_JOB, jid))
+        # NS_WORKING?
         keys = (self.namespace,)
         args = queues
         res = self.call_script("clear", keys, args)

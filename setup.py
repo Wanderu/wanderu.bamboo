@@ -28,7 +28,7 @@ setup(
         'hiredis',
         'txredisapi'
     ],
-    setup_requires = ['nose'],  # for the `nosetests` setuptools command
-    tests_require = ['nose', 'coverage'],  # to run the tests themselves
+    # setup_requires = ['nose'],  # for the `nosetests` setuptools command
+    # tests_require = ['nose', 'coverage'],  # to run the tests themselves
     test_suite = 'nose.collector'
 )

@@ -30,8 +30,7 @@ def clear_ns(rjq):
 class TXTCBase(object):
     def setUp(self):
         if getattr(self, 'ns', None) is None:
-            self.ns = "".join((choice(string.ascii_uppercase)
-                              for _ in xrange(3)))
+            self.ns = "".join((choice(string.ascii_uppercase) for _ in xrange(3)))
 
         self.rjq = TxRedisJobQueue(namespace="TEST:RJQ:%s" % self.ns)
         return clear_ns(self.rjq)
@@ -40,17 +39,60 @@ class TXTCBase(object):
         return self.rjq.conn.disconnect()
 
     def tearDown(self):
-        return clear_ns(self.rjq).addCallback(self._disconnect)
+        # return clear_ns(self.rjq).addCallback(self._disconnect)
+        return self._disconnect()
 
 class TestEnqueue(TXTCBase, unittest.TestCase):
 
     # TODO: Test add, consume, requeue/reschedule/schedule same job (fail)
 
     @defer.inlineCallbacks
+    def test_add_clear(self):
+        rjq = self.rjq
+        jobgen = generate_jobs()
+        for _ in range(100):
+            yield rjq.enqueue(next(jobgen))
+
+        can_consume = yield rjq.can_consume()
+        number_enqueued = yield rjq.count(NS_QUEUED)
+
+        self.assertTrue(can_consume())
+        self.assertEqual(number_enqueued, 100)
+
+        number_cleared = yield rjq.clear()
+        number_enqueued = yield rjq.count(NS_QUEUED)
+        can_consume = yield rjq.can_consume()
+
+        self.assertEqual(number_cleared, 100)
+        self.assertEqual(number_enqueued, 0)
+        self.assertFalse(can_consume)
+
+    @defer.inlineCallbacks
+    def test_add_consume_clear(self):
+        rjq = self.rjq
+
+        yield rjq.maxfailed(1)
+
+        jobgen = generate_jobs()
+        for _ in range(10):
+            yield rjq.enqueue(next(jobgen))
+
+        job = yield rjq.consume()
+        number_cleared = yield rjq.clear()
+        can_consume = yield rjq.can_consume()
+
+        self.assertEqual(number_cleared, 9)
+        self.assertFalse(can_consume)
+
+        yield rjq.fail(job, requeue_seconds=0)
+
+        can_consume = yield rjq.can_consume()
+        self.assertTrue(can_consume)
+
+    @defer.inlineCallbacks
     def test_add_consume_ack(self):
-        for rjq in (self.rjq,
-                TxRedisJobQueueView(self.rjq, self.rjq.namespace + ":MORE")):
-            jobgen = generate_jobs()
+        jobgen = generate_jobs()
+        for rjq in (self.rjq, TxRedisJobQueueView(self.rjq, self.rjq.namespace + ":MORE")):
             job1 = next(jobgen)
             res = yield rjq.enqueue(job1)
             self.assertEqual(res, 1)
