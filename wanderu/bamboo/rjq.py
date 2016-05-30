@@ -206,37 +206,37 @@ class RedisJobQueue(RedisJobQueueBase):
             raise OperationError("Invalid queue name: %s" % queue)
         return self.conn.zcard(self.key(queue))
 
-    def subscribe_callback(self, callback):
-        """Threaded queue event subscribe. `callback` will be called
-        in the worker thread each time a message is received. The
-        callback function should take 2 arguments, the job id and
-        the name of the queue.
+    # def subscribe_callback(self, callback):
+    #     """Threaded queue event subscribe. `callback` will be called
+    #     in the worker thread each time a message is received. The
+    #     callback function should take 2 arguments, the job id and
+    #     the name of the queue.
 
-        Returns an object that should be closed (ob.close()) in order
-        to unsubscribe and stop receiving events. It can be used with
-        `contextlib.closing`.
-        """
+    #     Returns an object that should be closed (ob.close()) in order
+    #     to unsubscribe and stop receiving events. It can be used with
+    #     `contextlib.closing`.
+    #     """
 
-        keys_rev = {self.key(q): q for q in QUEUE_NAMES}
+    #     keys_rev = {self.key(q): q for q in QUEUE_NAMES}
 
-        def proxy_callback(msg):
-            #         job id           name of queue
-            callback(msg['data'], keys_rev[msg['channel']])
+    #     def proxy_callback(msg):
+    #         #         job id           name of queue
+    #         callback(msg['data'], keys_rev[msg['channel']])
 
-        ps = self.conn.pubsub()
-        ps.subscribe(**{self.key(q): proxy_callback for q in QUEUE_NAMES})
+    #     ps = self.conn.pubsub()
+    #     ps.subscribe(**{self.key(q): proxy_callback for q in QUEUE_NAMES})
 
-        # run_in_thread already ignores subscribe messages
-        psthread = ps.run_in_thread(callback)
+    #     # run_in_thread already ignores subscribe messages
+    #     psthread = ps.run_in_thread(callback)
 
-        # with closing(rjq.subscribe_callback(cb)):
-        #     pass
+    #     # with closing(rjq.subscribe_callback(cb)):
+    #     #     pass
 
-        class Closer(object):
-            def close(self):
-                psthread.stop()
+    #     class Closer(object):
+    #         def close(self):
+    #             psthread.stop()
 
-        return Closer()
+    #     return Closer()
 
     def subscribe(self, block=False, timeout=0.1):
         """Returns a generator yielding messages for all queue events.

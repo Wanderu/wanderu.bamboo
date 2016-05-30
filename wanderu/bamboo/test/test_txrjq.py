@@ -39,8 +39,8 @@ class TXTCBase(object):
         return self.rjq.conn.disconnect()
 
     def tearDown(self):
-        # return clear_ns(self.rjq).addCallback(self._disconnect)
-        return self._disconnect()
+        return clear_ns(self.rjq).addCallback(self._disconnect)
+        # return self._disconnect()
 
 class TestEnqueue(TXTCBase, unittest.TestCase):
 
@@ -56,7 +56,7 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
         can_consume = yield rjq.can_consume()
         number_enqueued = yield rjq.count(NS_QUEUED)
 
-        self.assertTrue(can_consume())
+        self.assertTrue(can_consume)
         self.assertEqual(number_enqueued, 100)
 
         number_cleared = yield rjq.clear()
