@@ -424,10 +424,10 @@ class RedisJobQueue(RedisJobQueueBase):
         return self.conn.smembers(self.key(NS_WORKERS, worker_name))
 
     def active(self):
-        workers = []
+        workers = set()
         for worker in self.workers():
             if self.conn.exists(self.key(NS_WORKERS, worker, NS_ACTIVE)):
-                workers.append(worker)
+                workers.add(worker)
         return workers
 
 def RedisJobQueueView(rjq, namespace):

@@ -39,6 +39,31 @@ logger = logging.getLogger(__name__)
 
 class TestEnqueue(TCBase, unittest.TestCase):
 
+    def test_list_workers(self):
+        rjq = self.rjq
+
+        jobgen = generate_jobs()
+        job1 = next(jobgen)
+        rjq.enqueue(job1)
+
+        nworkers = len(rjq.workers())
+        njobs = len(rjq.jobs_for_worker(rjq.name))
+        nactive = len(rjq.active())
+
+        self.assertEqual(nworkers, 0)
+        self.assertEqual(njobs, 0)
+        self.assertEqual(nactive, 0)
+
+        job1consumed = rjq.consume()
+
+        nworkers = len(rjq.workers())
+        njobs = len(rjq.jobs_for_worker(rjq.name))
+        nactive = len(rjq.active())
+
+        self.assertEqual(nworkers, 1)
+        self.assertEqual(njobs, 1)
+        self.assertEqual(nactive, 1)
+
     def test_subscribe_post_consume(self):
         rjq = self.rjq
 
