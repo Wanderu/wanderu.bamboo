@@ -363,14 +363,3 @@ class TestEnqueue(TCBase, unittest.TestCase):
 
         self.assertEqual(rjqv1.count(NS_QUEUED), 0)
         # TODO: Add, consume, ack, fail, etc with the view.
-
-
-def main():
-    import logging
-    logging.basicConfig()
-    unittest.main()
-    return 0
-
-
-if __name__ == "__main__":
-    main()

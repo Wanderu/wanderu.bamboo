@@ -13,8 +13,7 @@
 # limitations under the License.
 
 # Py 3 Compatibility
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import (absolute_import, division, print_function, unicode_literals)
 
 import uuid
 from calendar import timegm
@@ -101,11 +100,11 @@ def name_for_host():
                      random_chars(6)))
 
 def gen_worker_name():
-    try:
+    # try:
         # gethostname can fail in some contexts
-        return name_for_host()
-    except:
-        return gen_random_name()
+    return name_for_host()
+    # except:
+    #     return gen_random_name()
 
 def unique_job_id():
     return uuid.uuid1().hex

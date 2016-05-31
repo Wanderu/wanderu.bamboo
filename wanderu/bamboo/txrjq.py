@@ -24,14 +24,13 @@ from twisted.python.failure import Failure
 
 from wanderu.bamboo.job import Job
 import wanderu.bamboo.txscript
-from wanderu.bamboo.rjq import SCRIPT_NAMES, RedisJobQueue
-from wanderu.bamboo.io import read_lua_scripts
+from wanderu.bamboo.rjq import RedisJobQueue
 from wanderu.bamboo.config import (NS_JOB, QUEUE_NAMES, NS_QUEUED,
                                    NS_WORKERS, NS_ACTIVE)
 from wanderu.bamboo.errors import (message_to_error,
-                                   OperationError,
+                                   # OperationError,
                                    AbnormalOperationError,
-                                   NormalOperationError,
+                                   # NormalOperationError,
                                    UnknownJobId, InvalidQueue)
 from wanderu.bamboo.util import utcunixts
 from wanderu.bamboo.txred import (makeConnection, makeSubscriber,
@@ -46,8 +45,8 @@ class TxRedisJobQueue(RedisJobQueue):
 
     def _init_connection(self, url):
         """conn: String. Redis connection URL string."""
-        self.url = url
-        self.conn = makeConnection(url or "", self.name)
+        self.url = url or ""
+        self.conn = makeConnection(self.url, self.name)
 
     def _script_error(self, failure, name):
         if failure.check(redis.ResponseError):
@@ -123,8 +122,7 @@ class TxRedisJobQueue(RedisJobQueue):
                   job = yield d
                   print job
         """
-        items = yield zscan_items(self.conn, self.key(Q),
-                                 match=None, count=count)
+        items = yield zscan_items(self.conn, self.key(Q), match=None, count=count)
         defer.returnValue((self.get(jobid) for jobid, score in items))
 
     def subscribe(self, callback):
@@ -145,8 +143,7 @@ class TxRedisJobQueue(RedisJobQueue):
     @staticmethod
     def _get_cb(job_dict, job_id):
         if len(job_dict) == 0:
-            raise UnknownJobId("No job with job ID {jid} found."
-                                .format(jid=job_id))
+            raise UnknownJobId("No job with job ID {jid} found.".format(jid=job_id))
         return Job.from_dict(job_dict)
 
     def get(self, job_id):

@@ -7,16 +7,14 @@ from datetime import datetime, timedelta
 
 from wanderu.bamboo.rjq import RedisJobQueue
 from wanderu.bamboo.job import Job
-from wanderu.bamboo.config import QUEUE_NAMES
+# from wanderu.bamboo.config import QUEUE_NAMES
 
-
-def printQueues(rjq):
-    for queue in QUEUE_NAMES:
-        print (queue)
-        for job in rjq.peek(queue):
-            print (job)
-        print ("")
-
+# def printQueues(rjq):
+#     for queue in QUEUE_NAMES:
+#         print (queue)
+#         for job in rjq.peek(queue):
+#             print (job)
+#         print ("")
 
 def job_cmp(ja, jb):
     """Tests a subset of job parameters to make sure the job is the same
@@ -38,8 +36,7 @@ def random_job_dict():
             timedelta(seconds=randrange(1, 24*60*60*60)))\
                 .strftime("%m/%d/%Y")
     return {
-        "id": "{c}_{f}_{t}_{date}".format(
-                c=c, f=f, t=t, date=date.replace("/", "")),
+        "id": "{c}_{f}_{t}_{date}".format(c=c, f=f, t=t, date=date.replace("/", "")),
         "payload": json.dumps({
                         "C": c, "F": f,
                         "T": t, "S": s,

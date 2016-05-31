@@ -146,16 +146,15 @@ class JobScanner(Scanner):
 @defer.inlineCallbacks
 def zscan_items(conn, key, match=None, count=None):
     cursor = 0
-    ct = 0
 
     items = []
     while True:
         cursor, _items = yield conn.zscan(key, cursor, match, count)
         for item, score in twos(_items):
-            if ct == count:
+            if len(items) == count:
                 break
             items.append((item, score))
-        if ct == count or cursor == 0:
+        if len(items) == count or cursor == 0:
             break
 
     defer.returnValue(items)

@@ -418,12 +418,19 @@ class RedisJobQueue(RedisJobQueueBase):
         return res
 
     def workers(self):
+        """Returns the names of worker processes for this queue."""
         return self.conn.smembers(self.key(NS_WORKERS))
 
     def jobs_for_worker(self, worker_name):
+        """Returns the Job IDs of the active jobs for a given worker.
+        IE. Jobs a worker has `consume()`ed.
+        """
         return self.conn.smembers(self.key(NS_WORKERS, worker_name))
 
     def active(self):
+        """Returns the naes of workers that are currently processing jobs.
+        IE. The worker has `consume()`ed at least 1 job.
+        """
         workers = set()
         for worker in self.workers():
             if self.conn.exists(self.key(NS_WORKERS, worker, NS_ACTIVE)):

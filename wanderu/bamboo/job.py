@@ -13,8 +13,7 @@
 # limitations under the License.
 
 # Py 3 Compatibility
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import (absolute_import, division, print_function, unicode_literals)
 
 from itertools import chain
 
@@ -46,16 +45,15 @@ class GenericModel(object):
             # setattr(self, k, kwargs.get(k, v.get('default', None)))
             default = v.get('default', None)
             # set default values for items on initialization
-            setattr(self, k,
-                    kwargs.get(k, default() if callable(default) else default))
+            setattr(self, k, kwargs.get(k, default() if callable(default) else default))
 
-    def _set_default(self):
-        """Manual process for setting default values from the items in _fields.
-        """
-        for k, meta in self._fields.items():
-            default = meta.get('default', None)
-            if default is not None:
-                setattr(self, k, default() if callable(default) else default)
+    # def _set_default(self):
+    #     """Manual process for setting default values from the items in _fields.
+    #     """
+    #     for k, meta in self._fields.items():
+    #         default = meta.get('default', None)
+    #         if default is not None:
+    #             setattr(self, k, default() if callable(default) else default)
 
     def __setattr__(self, k, v):
         """Make sure it is a valid field and convert to expected type if
@@ -63,8 +61,8 @@ class GenericModel(object):
         if k in self._fields:
             object.__setattr__(self, k,
                         self._fields[k]['type'](v)
-                        if 'type' in self._fields[k]
-                        and v is not None else v)
+                        if 'type' in self._fields[k] and
+                        v is not None else v)
         else:
             raise KeyError("Invalid field: %s" % k)
 
@@ -91,8 +89,7 @@ class GenericModel(object):
                     if not filter or getattr(self, k, None)}
 
     def __eq__(self, other):
-        return isinstance(other, self.__class__) and \
-                    self.as_dict() == other.as_dict()
+        return isinstance(other, self.__class__) and self.as_dict() == other.as_dict()
 
     def __ne__(self, other):
         return (not self.__eq__(other))

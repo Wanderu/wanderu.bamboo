@@ -5,10 +5,10 @@ from random import choice
 from twisted.trial import unittest
 from twisted.internet import defer, task, reactor
 
+from wanderu.bamboo.txscript import Script
 from wanderu.bamboo.txrjq import TxRedisJobQueue, TxRedisJobQueueView
 from wanderu.bamboo.test.util import (generate_jobs, job_cmp)
-from wanderu.bamboo.config import (NS_QUEUED, NS_WORKING, NS_SCHEDULED,
-                                   NS_FAILED)
+from wanderu.bamboo.config import (NS_QUEUED, NS_WORKING, NS_SCHEDULED, NS_FAILED)
 from wanderu.bamboo.txred import JobScanner
 from wanderu.bamboo.errors import (NoItems, NormalOperationError,
                                    JobExists, AbnormalOperationError,
@@ -41,28 +41,84 @@ class TXTCBase(object):
         return clear_ns(self.rjq).addCallback(self._disconnect)
         # return self._disconnect()
 
+class TestTxScript(TXTCBase, unittest.TestCase):
+
+    @defer.inlineCallbacks
+    def test_script(self):
+        script = Script(self.rjq.conn, "return 1")
+        script.sha = "notarealsha"
+        res = yield script()
+        self.assertEqual(int(res), 1)
+
 class TestEnqueue(TXTCBase, unittest.TestCase):
+
+    @defer.inlineCallbacks
+    def add_jobs(self, n=10):
+        rjq = self.rjq
+        jobgen = generate_jobs()
+        for _ in range(n):
+            yield rjq.enqueue(next(jobgen))
+
+    @defer.inlineCallbacks
+    def test_active_workers(self):
+        rjq = self.rjq
+
+        yield self.add_jobs()
+
+        active_workers = yield rjq.active()
+        self.assertEqual(len(active_workers), 0)
+
+        job = yield rjq.consume()
+
+        active_workers = yield rjq.active()
+        self.assertEqual(len(active_workers), 1)
+
+        worker_name = next(iter(active_workers))
+        self.assertEqual(worker_name, rjq.name)
+
+        jobs = yield rjq.jobs_for_worker(worker_name)
+        self.assertEqual(next(iter(jobs)), job.id)
 
     @defer.inlineCallbacks
     def test_add_clear(self):
         rjq = self.rjq
-        jobgen = generate_jobs()
-        for _ in range(100):
-            yield rjq.enqueue(next(jobgen))
+
+        yield self.add_jobs()
 
         can_consume = yield rjq.can_consume()
         number_enqueued = yield rjq.count(NS_QUEUED)
 
         self.assertTrue(can_consume)
-        self.assertEqual(number_enqueued, 100)
+        self.assertEqual(number_enqueued, 10)
 
         number_cleared = yield rjq.clear()
         number_enqueued = yield rjq.count(NS_QUEUED)
         can_consume = yield rjq.can_consume()
 
-        self.assertEqual(number_cleared, 100)
+        self.assertEqual(number_cleared, 10)
         self.assertEqual(number_enqueued, 0)
         self.assertFalse(can_consume)
+
+    @defer.inlineCallbacks
+    def test_add_consume_fail_clear(self):
+        rjq = self.rjq
+        yield rjq.maxfailed(2)
+        yield self.add_jobs()
+
+        job1 = yield rjq.consume()
+        job2 = yield rjq.consume()
+
+        yield rjq.fail(job1)
+        yield rjq.fail(job2)
+
+        self.assertEqual((yield rjq.count(NS_QUEUED)), 8)
+        self.assertEqual((yield rjq.count(NS_SCHEDULED)), 2)
+
+        number_cleared = yield rjq.clear()
+        self.assertEqual(number_cleared, 10)
+
+        self.assertEqual((yield rjq.count(NS_QUEUED)), 0)
+        self.assertEqual((yield rjq.count(NS_SCHEDULED)), 0)
 
     @defer.inlineCallbacks
     def test_add_consume_clear(self):
@@ -88,6 +144,30 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
 
         number_enqueued = yield rjq.count(NS_SCHEDULED)
         self.assertEqual(number_enqueued, 1)
+
+    @defer.inlineCallbacks
+    def test_add_consume_clear_all(self):
+        rjq = self.rjq
+        yield rjq.maxfailed(1)
+
+        jobgen = generate_jobs()
+        for _ in range(10):
+            yield rjq.enqueue(next(jobgen))
+
+        job = yield rjq.consume()
+        number_cleared = yield rjq.clear(queues=(NS_QUEUED, NS_SCHEDULED, NS_FAILED, NS_WORKING))
+        self.assertEqual(number_cleared, 10)
+        self.assertFalse((yield rjq.can_consume()))
+
+        try:
+            yield rjq.ack(job)
+        except UnknownJobId:
+            pass
+
+        try:
+            yield rjq.fail(job)
+        except UnknownJobId:
+            pass
 
     @defer.inlineCallbacks
     def test_add_consume_ack(self):
@@ -148,6 +228,13 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
         self.assertTrue(job_cmp(job0, job0b))
         self.assertTrue(job_cmp(job1, job1b))
         self.assertTrue(job_cmp(job2, job2b))
+
+        jobit = yield rjq.queue_iter(NS_QUEUED, count=2)
+        njobs = 0
+        for _ in jobit:
+            njobs += 1
+
+        self.assertEqual(njobs, 2)
 
     @defer.inlineCallbacks
     def test_add_consume_add_again(self):
@@ -375,7 +462,28 @@ class TestEnqueue(TXTCBase, unittest.TestCase):
         job1b = yield self.rjq.consume()
         self.assertTrue(job_cmp(job1a, job1b))
 
-    # def test_subscribe
+    @defer.inlineCallbacks
+    def test_subscribe(self):
+        rjq = self.rjq
+
+        jobgen = generate_jobs()
+        job1 = next(jobgen)
+
+        job_signals = []
+
+        def collectJobSignals(job_signal):
+            job_signals.append(job_signal)
+
+        sub = yield rjq.subscribe(collectJobSignals)  # subscribe to all queue events
+
+        yield rjq.enqueue(job1)
+
+        yield task.deferLater(reactor, 0.2, lambda *args: None)
+        self.assertEqual(len(job_signals), 1)
+        self.assertEqual(job_signals[0][0], job1.id)
+
+        yield sub.unsubscribe("")
+        yield sub.disconnect()
 
 
 class JobCollectScanner(JobScanner):
