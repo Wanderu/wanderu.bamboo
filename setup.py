@@ -8,7 +8,7 @@ from setuptools import setup, find_packages
 setup(
     # about meta
     name = 'wanderu.bamboo',
-    version = '1.0.0',
+    version = '1.0.1',
     author = "Wanderu Dev Team",
     author_email = "dev@wanderu.com",
     url = "www.wanderu.com",
