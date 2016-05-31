@@ -238,7 +238,7 @@ class RedisJobQueue(RedisJobQueueBase):
 
     #     return Closer()
 
-    def subscribe(self, block=False, timeout=0.1):
+    def subscribe(self, timeout=0.1):
         """Returns a generator yielding messages for all queue events.
 
         The generator yields tuples of the form (job-id, queue).
@@ -255,14 +255,17 @@ class RedisJobQueue(RedisJobQueueBase):
         def message_gen():
             try:
                 while ps.subscribed:
-                    msg = ps.handle_message(
-                            ps.parse_response(block=block, timeout=timeout),
-                            ignore_subscribe_messages=True)
+                    msg = ps.get_message(ignore_subscribe_messages=False, timeout=timeout)
+                    # msg = ps.handle_message(
+                    #         ps.parse_response(block=block, timeout=timeout),
+                    #         ignore_subscribe_messages=True)
 
-                    # msg can be None for (un)subscribe messages and when
-                    # the pubsub channel is closed.
                     if msg is None:
                         yield None
+                        continue
+
+                    if 'message' not in msg['type']:
+                        continue
 
                     #       job id           name of queue
                     yield msg['data'], keys_rev[msg['channel']]

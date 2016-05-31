@@ -39,6 +39,23 @@ logger = logging.getLogger(__name__)
 
 class TestEnqueue(TCBase, unittest.TestCase):
 
+    def test_subscribe_post_consume(self):
+        rjq = self.rjq
+
+        jobgen = generate_jobs()
+        job1 = next(jobgen)
+
+        sub = rjq.subscribe()
+
+        msg = next(sub)
+        self.assertTrue(msg is None)
+
+        rjq.enqueue(job1)
+
+        msg = next(sub)
+        self.assertEqual(msg[1], NS_QUEUED)
+        self.assertEqual(msg[0], job1.id)
+
     def test_enqueue_consume_ack_1(self):
         # """Enqueue, consume, ack. Test for state changes."""
         rjq = self.rjq
