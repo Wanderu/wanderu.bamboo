@@ -22,5 +22,6 @@ To build the package
 
 To run the tests:
 
+    pip install nose coverage
     python setup.py nosetests
     coverage report -m
