@@ -15,6 +15,7 @@
 import unittest
 import time
 import logging
+import os
 
 from wanderu.bamboo.rjq import RedisJobQueue, RedisJobQueueView
 from wanderu.bamboo.config import (
@@ -304,11 +305,12 @@ class TestEnqueue(TCBase, unittest.TestCase):
 
         namespace = "RECOVER"
 
+        conn  = os.environ.get('REDIS_CONN', 'redis://localhost')
         rjq1 = RedisJobQueue(namespace="TEST:RJQ:%s" % namespace,
-                worker_expiration=1, name="testrjq1")
+                worker_expiration=1, name="testrjq1", conn=conn)
 
         rjq2 = RedisJobQueue(namespace="TEST:RJQ:%s" % namespace,
-                worker_expiration=1, name="testrjq2")
+                worker_expiration=1, name="testrjq2", conn=conn)
 
         rjq1.add(job1a)
         job1a = rjq1.consume()

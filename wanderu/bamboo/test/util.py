@@ -1,6 +1,7 @@
 import string
 import random
 import json
+import os
 
 from random import choice, randrange
 from datetime import datetime, timedelta
@@ -65,7 +66,8 @@ class TCBase(object):
             self.ns = "".join((choice(string.ascii_uppercase)
                               for _ in xrange(3)))
 
-        self.rjq = RedisJobQueue(namespace="TEST:RJQ:%s" % self.ns)
+        conn  = os.environ.get('REDIS_CONN', 'redis://localhost')
+        self.rjq = RedisJobQueue(namespace="TEST:RJQ:%s" % self.ns, conn=conn)
         clear_ns(self.rjq)
 
     def tearDown(self):
