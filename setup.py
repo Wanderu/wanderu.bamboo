@@ -32,6 +32,6 @@ setup(
         'tx': ['txredisapi']
     },
     # setup_requires = ['nose'],  # for the `nosetests` setuptools command
-    # tests_require = ['nose', 'coverage'],  # to run the tests themselves
+    tests_require = ['nose', 'coverage', 'txredisapi'],  # to run the tests themselves
     test_suite = 'nose.collector'
 )

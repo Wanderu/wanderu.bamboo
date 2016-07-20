@@ -85,7 +85,7 @@ def get_redis_connection(conn):
     if isinstance(conn, (StrictRedis, Redis)):
         return conn
     if isinstance(conn, StringTypes):
-        return redis.from_url(conn)
+        return StrictRedis.from_url(conn)
     if isinstance(conn, tuple):
         return StrictRedis(*conn)
     if isinstance(conn, dict):

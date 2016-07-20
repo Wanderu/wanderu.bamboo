@@ -1,5 +1,6 @@
 import logging
 import string
+import os
 from random import choice
 
 from twisted.trial import unittest
@@ -31,7 +32,8 @@ class TXTCBase(object):
         if getattr(self, 'ns', None) is None:
             self.ns = "".join((choice(string.ascii_uppercase) for _ in xrange(3)))
 
-        self.rjq = TxRedisJobQueue(namespace="TEST:RJQ:%s" % self.ns)
+        conn  = os.environ.get('REDIS_CONN', 'redis://localhost')
+        self.rjq = TxRedisJobQueue(namespace="TEST:RJQ:%s" % self.ns, conn=conn)
         return clear_ns(self.rjq)
 
     def _disconnect(self, *args):
