@@ -19,11 +19,11 @@ class TxRedisFactory(redis.RedisFactory):
         return redis.RedisFactory.addConnection(self, conn)
 
 def makeConnection(url, name,
-                    reconnect = True, charset = "utf-8",
-                    isLazy = True, poolsize = 5,
-                    replyTimeout = None,
-                    convertNumbers = True,
-                    connectTimeout = None):
+                    reconnect=True, charset="utf-8",
+                    isLazy=True, poolsize=5,
+                    replyTimeout=None,
+                    convertNumbers=True,
+                    connectTimeout=None):
     """A version of txredisapi.makeConnection that uses TxRedisFactory
     instead of txredisapi.RedisFactory.
     """
@@ -33,7 +33,7 @@ def makeConnection(url, name,
                             redis.ConnectionHandler, charset, password,
                             replyTimeout, convertNumbers)
     factory.continueTrying = reconnect
-    for x in xrange(poolsize):
+    for x in range(poolsize):
         reactor.connectTCP(host, port, factory, connectTimeout)
 
     if isLazy:

@@ -16,10 +16,14 @@
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 
 from itertools import chain
+import collections
+
+import six
 
 from wanderu.bamboo.util import twos, utcunixts
 from wanderu.bamboo.config import DEFAULT_PRIORITY
 
+@six.python_2_unicode_compatible
 class GenericModel(object):
     """
     Defining the fields allows us to automatically convert all string-based
@@ -41,19 +45,10 @@ class GenericModel(object):
     _fields = dict()
 
     def __init__(self, **kwargs):
-        for k, v in self._fields.items():
-            # setattr(self, k, kwargs.get(k, v.get('default', None)))
-            default = v.get('default', None)
+        for name, meta in self._fields.items():
             # set default values for items on initialization
-            setattr(self, k, kwargs.get(k, default() if callable(default) else default))
-
-    # def _set_default(self):
-    #     """Manual process for setting default values from the items in _fields.
-    #     """
-    #     for k, meta in self._fields.items():
-    #         default = meta.get('default', None)
-    #         if default is not None:
-    #             setattr(self, k, default() if callable(default) else default)
+            default = meta.get('default', None)
+            setattr(self, name, kwargs.get(name, default() if isinstance(default, collections.Callable) else default))
 
     def __setattr__(self, k, v):
         """Make sure it is a valid field and convert to expected type if
@@ -68,7 +63,7 @@ class GenericModel(object):
 
     @classmethod
     def from_string_list(cls, l):
-        return cls(**{k: v for k, v in twos(l)})
+        return cls(**{six.text_type(k): v for k, v in twos(l)})
 
     def as_string_tup(self, filter=True):
         # tuple(chain(*job.as_dict(filter=True).items()))
@@ -94,19 +89,17 @@ class GenericModel(object):
     def __ne__(self, other):
         return (not self.__eq__(other))
 
-    def __unicode__(self):
+    def __str__(self):
         return "{klass}({params})".format(
                 klass=self.__class__.__name__,
-                params= ", ".join(("{k}={v}".format(k=k, v=unicode(v))
+                params= ", ".join(("{k}={v}".format(k=k, v=six.text_type(v))
                                    for k, v in sorted(self.as_dict().items())
                                    if v is not None))
                 )
 
-    def __str__(self):
-        return unicode(self).encode("utf-8")
-
     def __repr__(self):
         """ob == eval(repr(ob))"""
+        # __repr__() must return a str on all versions of Python.
         return "{klass}({params})".format(
                 klass=self.__class__.__name__,
                 params= ", ".join(("{k}={v}".format(k=k, v=repr(v))
@@ -116,6 +109,10 @@ class GenericModel(object):
     def __hash__(self):
         return hash(repr(self))
 
+def text_type_utf8(s):
+    if isinstance(s, six.binary_type):
+        return six.text_type(s, encoding='utf-8')
+    return s
 
 class Job(GenericModel):
     """
@@ -133,18 +130,18 @@ class Job(GenericModel):
     """
 
     _fields = {
-        'id'         : {'type': unicode},
+        'id'         : {'type': text_type_utf8},
         'priority'   : {'type': float, 'default': DEFAULT_PRIORITY},
-        'payload'    : {'type': unicode}, # used to be 'parameters'
+        'payload'    : {}, # used to be 'parameters'
         'created'    : {'type': float,
                         'default':  utcunixts},
         'failures'   : {'type': int, 'default': 0},
         'failed'     : {'type': float},
         'consumed'   : {'type': float},
-        'owner'      : {'type': unicode},
-        'contenttype': {'type': unicode, 'default': u""},
-        'encoding'   : {'type': unicode, 'default': u""},
-        'state'      : {'type': unicode},
+        'owner'      : {'type': text_type_utf8},
+        'contenttype': {'type': text_type_utf8, 'default': ""},
+        'encoding'   : {'type': text_type_utf8, 'default': ""},
+        'state'      : {'type': text_type_utf8},
     }
 
 

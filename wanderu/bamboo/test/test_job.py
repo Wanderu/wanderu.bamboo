@@ -16,7 +16,7 @@ def test_job_serialization():
 
     assert job1 == job2
 
-    jl = list(chain(*jd.items()))
+    jl = list(chain(*list(jd.items())))
     job2 = Job.from_string_list(jl)
     jl2 = job2.as_string_tup()
 

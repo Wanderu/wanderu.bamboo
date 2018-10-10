@@ -29,9 +29,9 @@ def job_cmp(ja, jb):
 
 def random_job_dict():
 
-    c = "".join((choice(string.ascii_uppercase) for _ in xrange(3)))
-    f = "".join((choice(string.ascii_uppercase) for _ in xrange(6)))
-    t = "".join((choice(string.ascii_uppercase) for _ in xrange(6)))
+    c = "".join((choice(string.ascii_uppercase) for _ in range(3)))
+    f = "".join((choice(string.ascii_uppercase) for _ in range(6)))
+    t = "".join((choice(string.ascii_uppercase) for _ in range(6)))
     s = "something"
     date = (datetime.utcnow() +
             timedelta(seconds=randrange(1, 24*60*60*60)))\
@@ -64,7 +64,7 @@ class TCBase(object):
     def setUp(self):
         if getattr(self, 'ns', None) is None:
             self.ns = "".join((choice(string.ascii_uppercase)
-                              for _ in xrange(3)))
+                              for _ in range(3)))
 
         conn  = os.environ.get('REDIS_CONN', 'redis://localhost')
         self.rjq = RedisJobQueue(namespace="TEST:RJQ:%s" % self.ns, conn=conn)

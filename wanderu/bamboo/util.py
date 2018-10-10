@@ -24,8 +24,7 @@ from socket import gethostname
 from string import ascii_lowercase, digits
 from random import choice
 from uuid import uuid1
-from urlparse import urlparse
-from urllib import unquote
+from six.moves import urllib
 from wanderu.bamboo.config import RE_HASHSLOT
 
 MS_TO_SEC = 10**6
@@ -47,9 +46,9 @@ def makeClusterNamespace(namespace):
 
 def parse_url(url):
     """url: redis://localhost:6379/0"""
-    pr = urlparse(url)
-    host, path, password = map(unquote,
-            (pr.hostname or "", pr.path or "", pr.password or ""))
+    pr = urllib.parse.urlparse(url)
+    host, path, password = list(map(urllib.parse.unquote,
+            (pr.hostname or "", pr.path or "", pr.password or "")))
     dbid = path[1:].split('/')[0]
     return (host or "localhost", pr.port or 6379, dbid or 0,
             password or None)
@@ -67,7 +66,10 @@ def twos(l):
     """
     it = iter(l)
     while True:
-        yield next(it), next(it)
+        try:
+            yield next(it), next(it)
+        except StopIteration:
+            return
 
 def make_key(ns_sep, namespace, *names):
     """Make a redis namespaced key.
@@ -87,7 +89,7 @@ def utcunixts(dt=None):
 
 def random_chars(n=1):
     return "".join([choice(list(chain(ascii_lowercase, digits)))
-                    for _ in xrange(n)])
+                    for _ in range(n)])
 
 
 def gen_random_name():

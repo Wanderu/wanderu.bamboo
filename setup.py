@@ -1,6 +1,6 @@
 # coding: utf-8
-from setuptools import setup, find_packages
 from os.path import join as pathjoin, dirname
+from setuptools import setup, find_packages
 
 def read(*rnames):
     return open(pathjoin(dirname(__file__), *rnames)).read()
@@ -8,11 +8,12 @@ def read(*rnames):
 setup(
     # about meta
     name = 'wanderu.bamboo',
-    version = '1.0.2',
+    version = '1.1.0',
     author = "Wanderu Dev Team",
     author_email = "ckirkos@wanderu.com",
     url = "www.wanderu.com",
     license="Apache License 2.0",
+    keywords = ['Redis', 'Queue'],
     description = read('README.md'),
     namespace_packages = ['wanderu'],  # setuptools specific feature
     packages = find_packages(),   # Find packages in the 'src' folder
@@ -23,6 +24,7 @@ setup(
     },
     install_requires = [
         'setuptools',
+        'six',
         'redis',
         'hiredis'
     ],
@@ -31,7 +33,16 @@ setup(
         # pip install wanderu.bamboo[tx]
         'tx': ['txredisapi']
     },
-    # setup_requires = ['nose'],  # for the `nosetests` setuptools command
     tests_require = ['nose', 'coverage', 'txredisapi'],  # to run the tests themselves
-    test_suite = 'nose.collector'
+    test_suite = 'nose.collector',
+    classifiers=[
+        'Development Status :: 5 - Production/Stable',
+        'License :: OSI Approved :: Apache License 2.0',
+        'Programming Language :: Python :: 2',
+        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
+    ],
 )

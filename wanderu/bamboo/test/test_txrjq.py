@@ -30,7 +30,7 @@ def clear_ns(rjq):
 class TXTCBase(object):
     def setUp(self):
         if getattr(self, 'ns', None) is None:
-            self.ns = "".join((choice(string.ascii_uppercase) for _ in xrange(3)))
+            self.ns = "".join((choice(string.ascii_uppercase) for _ in range(3)))
 
         conn  = os.environ.get('REDIS_CONN', 'redis://localhost')
         self.rjq = TxRedisJobQueue(namespace="TEST:RJQ:%s" % self.ns, conn=conn)

@@ -19,8 +19,9 @@ from __future__ import (absolute_import, division, print_function,
 import logging
 import redis
 import redis.client
-import sha
-from types import StringTypes
+import hashlib
+import six
+
 
 from redis import StrictRedis, Redis
 from redis.exceptions import RedisError
@@ -60,18 +61,15 @@ SCRIPT_NAMES = [
 
 
 class RedisJobQueueBase(object):
-
     def __init__(self, namespace, name=None, conn=None,
                  worker_expiration=WORKER_EXPIRATION,
                  requeue_timeout=REQUEUE_TIMEOUT):
-
         self.namespace = RE_HASHSLOT.match(namespace) and namespace \
                             or ("{%s}" % namespace)
         self.name = name or gen_worker_name()
         self.worker_expiration = worker_expiration
         self.requeue_timeout = requeue_timeout
         self.conn = None
-
         # Subclasses should implement these methods
         self._init_connection(conn)
         self._load_lua_scripts()
@@ -82,14 +80,18 @@ class RedisJobQueueBase(object):
 
 
 def get_redis_connection(conn):
+    kwargs = {
+        'decode_responses': True
+    }
     if isinstance(conn, (StrictRedis, Redis)):
         return conn
-    if isinstance(conn, StringTypes):
-        return StrictRedis.from_url(conn)
+    if isinstance(conn, six.string_types):
+        return StrictRedis.from_url(conn, **kwargs)
     if isinstance(conn, tuple):
-        return StrictRedis(*conn)
+        return StrictRedis(*conn, **kwargs)
     if isinstance(conn, dict):
-        return StrictRedis(**conn)
+        kwargs.update(conn)
+        return StrictRedis(**kwargs)
     raise TypeError("Invalid conn parameter type.")
 
 
@@ -104,7 +106,6 @@ class RedisJobQueue(RedisJobQueueBase):
         self.conn.client_setname(self.name)  # unique name for this client
 
     def _load_lua_scripts(self):
-
         self.scripts = {
             name: self.RedisScript(self.conn, contents)
             for name, contents in read_lua_scripts(SCRIPT_NAMES).items()
@@ -112,7 +113,10 @@ class RedisJobQueue(RedisJobQueueBase):
 
         if logger.isEnabledFor(logging.DEBUG):
             for name, script in self.scripts.items():
-                script_sha = sha.sha(script.script).hexdigest()
+                script_bytes = script.script
+                if isinstance(script_bytes, six.text_type):
+                    script_bytes = script_bytes.encode('ascii')
+                script_sha = hashlib.sha1(script_bytes).hexdigest()
                 logger.debug("script loaded", extra={'sha': script_sha, 'scriptName': name})
 
     def call_script(self, name, keys, args):
@@ -195,7 +199,7 @@ class RedisJobQueue(RedisJobQueueBase):
         """
         job: Job object or Job ID string.
         """
-        jobid = job if isinstance(job, StringTypes) else job.id
+        jobid = job if isinstance(job, six.string_types) else job.id
         keys = (self.namespace,)
         args = (jobid,)
         return self.call_script("cancel", keys, args)

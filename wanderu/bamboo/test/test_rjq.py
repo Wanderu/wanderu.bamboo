@@ -122,7 +122,7 @@ class TestEnqueue(TCBase, unittest.TestCase):
         rjq = self.rjq
         jobgen = generate_jobs()
         self.assertEqual(rjq.count(NS_QUEUED), 0)
-        for i in xrange(1, 5):
+        for i in range(1, 5):
             job = next(jobgen)
             rjq.add(job)
             self.assertEqual(rjq.count(NS_QUEUED), i)
