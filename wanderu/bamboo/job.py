@@ -21,7 +21,7 @@ import collections
 import six
 
 from wanderu.bamboo.util import twos, utcunixts
-from wanderu.bamboo.config import DEFAULT_PRIORITY
+from wanderu.bamboo.config import DEFAULT_PRIORITY, DEFAULT_EXPIRY
 
 @six.python_2_unicode_compatible
 class GenericModel(object):
@@ -135,6 +135,7 @@ class Job(GenericModel):
         'payload'    : {}, # used to be 'parameters'
         'created'    : {'type': float,
                         'default':  utcunixts},
+        'expiry'     : {'type': float, 'default': DEFAULT_EXPIRY},
         'failures'   : {'type': int, 'default': 0},
         'failed'     : {'type': float},
         'consumed'   : {'type': float},

@@ -49,6 +49,8 @@ NS_SEP       = ":"
 
 QUEUE_NAMES  = {NS_QUEUED, NS_WORKING, NS_FAILED, NS_SCHEDULED}
 
+DEFAULT_EXPIRY = None
+
 DEFAULT_PRIORITY = 5      # [0, 10) (our choice)
 REQUEUE_TIMEOUT = 60*60   # seconds
 JOB_TIMEOUT = 60*60       # seconds
