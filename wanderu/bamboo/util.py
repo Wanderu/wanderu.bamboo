@@ -71,13 +71,20 @@ def twos(l):
         except StopIteration:
             return
 
+def byte_decode(o):
+    if isinstance(o, bytes):  return o.decode('utf-8')
+    if isinstance(o, dict):   return dict(map(byte_decode, o.items()))
+    if isinstance(o, tuple):  return map(byte_decode, o)
+    if isinstance(o, list):   return [byte_decode(d) for d in o]
+    return o
+
 def make_key(ns_sep, namespace, *names):
     """Make a redis namespaced key.
 
     >>> make_key(":", "YOO:HOO", "a", "b", "c") == "YOO:HOO:a:b:c"
     True
     """
-    return ns_sep.join(chain((namespace,), names))
+    return ns_sep.join(chain((namespace,), byte_decode(names)))
 
 def utcunixts(dt=None):
     if dt is None:
