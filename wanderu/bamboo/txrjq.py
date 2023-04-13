@@ -53,7 +53,8 @@ class TxRedisJobQueue(RedisJobQueue):
             # error translation
             converted_error = message_to_error(failure.getErrorMessage())
             if isinstance(converted_error, AbnormalOperationError):
-                logger.error("Error in %s: %s" % (name, failure))
+                # TODO: Include script name in converted_error
+                logger.debug("Error in %s: %s" % (name, failure))
             return Failure(converted_error)
         return failure
 

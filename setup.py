@@ -8,7 +8,7 @@ def read(*rnames):
 setup(
     # about meta
     name = 'wanderu.bamboo',
-    version = '1.1.1',
+    version = '1.1.2',
     author = "Wanderu Dev Team",
     author_email = "ckirkos@wanderu.com",
     url = "www.wanderu.com",

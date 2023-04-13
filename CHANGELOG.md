@@ -1,6 +1,9 @@
 Wanderu Bamboo
 =================
 
+# 1.1.2
+* Bamboo No Longer logs script errors as error (PR #5)
+
 # 1.1.1
 * Bamboo Adwords Updater SCP-2057 (PR #3)
 
