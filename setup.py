@@ -1,14 +1,15 @@
 # coding: utf-8
 from os import rename
 from os.path import join as pathjoin, dirname
+import subprocess
 from setuptools import setup, find_packages
 from setuptools.command.build_ext import build_ext
-import subprocess
 
 def read(*rnames):
     return open(pathjoin(dirname(__file__), *rnames)).read()
 
-class git_clone_external(build_ext):
+class GitCloneScripts(build_ext):
+    """ Clones Lua Scripts and puts in expected directory """
     def run(self):
         subprocess.check_call(['git', 'clone', 'https://github.com/wanderu/bamboo-scripts'])
         rename('bamboo-scripts', 'wanderu/bamboo/scripts')
@@ -26,7 +27,7 @@ setup(
     description = read('README.md'),
     namespace_packages = ['wanderu'],  # setuptools specific feature
     packages = find_packages(),   # Find packages in the 'src' folder
-    cmdclass = {'build_ext': git_clone_external},
+    cmdclass = {'build_ext': GitCloneScripts},
     package_data = {
         'wanderu.bamboo': [
             'scripts/*.lua'
