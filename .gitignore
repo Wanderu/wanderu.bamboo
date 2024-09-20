@@ -2,6 +2,7 @@
 tmp/
 *.bak
 scrap.py
+wanderu/bamboo/scripts
 
 # Mac
 .DS_Store
