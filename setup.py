@@ -1,6 +1,5 @@
 # coding: utf-8
-from os.path import join as pathjoin, dirname
-from os.path import isdir
+from os.path import join as pathjoin, dirname, isdir
 from shutil import rmtree
 import subprocess
 from setuptools import setup, find_packages
