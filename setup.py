@@ -1,11 +1,12 @@
 # coding: utf-8
-from os import rename, rmdir, path
+from os import rename, path
 from os.path import join as pathjoin, dirname
 import subprocess
 from shutil import rmtree
 from setuptools import setup, find_packages
 from setuptools.command.install import install
 from setuptools.command.develop import develop
+from setuptools.command.build import build
 from setuptools.command.egg_info import egg_info
 
 def read(*rnames):
@@ -32,6 +33,12 @@ class GitCloneScriptsDevelop(develop):
         develop.run(self)
         GitCloneScripts()
 
+class GitCloneScriptsBuild(build):
+    """ Git Clone on build """
+    def run(self):
+        build.run(self)
+        GitCloneScripts()
+
 class GitCloneScriptsEggInfo(egg_info):
     """ Git Clone on egg_info """
     def run(self):
@@ -53,6 +60,7 @@ setup(
     cmdclass = {
         'install': GitCloneScriptsInstall,
         'develop': GitCloneScriptsDevelop,
+        'build': GitCloneScriptsBuild,
         'egg_info': GitCloneScriptsEggInfo,
     },
     install_requires = [
