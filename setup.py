@@ -3,17 +3,36 @@ from os import rename
 from os.path import join as pathjoin, dirname
 import subprocess
 from setuptools import setup, find_packages
-from setuptools.command.build_ext import build_ext
+from setuptools.command.install import install
+from setuptools.command.develop import develop
+from setuptools.command.egg_info import egg_info
 
 def read(*rnames):
+    """ Reads file """
     return open(pathjoin(dirname(__file__), *rnames)).read()
 
-class GitCloneScripts(build_ext):
+class GitCloneScripts():
     """ Clones Lua Scripts and puts in expected directory """
+    subprocess.check_call(['git', 'clone', 'https://github.com/wanderu/bamboo-scripts'])
+    rename('bamboo-scripts', 'wanderu/bamboo/scripts')
+
+class GitCloneScriptsInstall(install):
+    """ Git Clone on install """
     def run(self):
-        subprocess.check_call(['git', 'clone', 'https://github.com/wanderu/bamboo-scripts'])
-        rename('bamboo-scripts', 'wanderu/bamboo/scripts')
-        build_ext.run(self)
+        install.run(self)
+        GitCloneScripts()
+
+class GitCloneScriptsDevelop(develop):
+    """ Git Clone on develop """
+    def run(self):
+        develop.run(self)
+        GitCloneScripts()
+
+class GitCloneScriptsEggInfo(egg_info):
+    """ Git Clone on egg_info """
+    def run(self):
+        egg_info.run(self)
+        GitCloneScripts()
 
 setup(
     # about meta
@@ -27,7 +46,11 @@ setup(
     description = read('README.md'),
     namespace_packages = ['wanderu'],  # setuptools specific feature
     packages = find_packages(),   # Find packages in the 'src' folder
-    cmdclass = {'build_ext': GitCloneScripts},
+    cmdclass = {
+        'install': GitCloneScriptsInstall,
+        'develop': GitCloneScriptsDevelop,
+        'egg_info': GitCloneScriptsEggInfo,
+    },
     install_requires = [
         'setuptools',
         'six',
