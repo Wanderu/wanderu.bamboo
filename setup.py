@@ -1,8 +1,6 @@
 # coding: utf-8
-from os import rename, path
 from os.path import join as pathjoin, dirname
 import subprocess
-from shutil import rmtree
 from setuptools import setup, find_packages
 from setuptools.command.install import install
 from setuptools.command.develop import develop
@@ -14,11 +12,9 @@ def read(*rnames):
 
 class GitCloneScripts():
     """ Clones Lua Scripts and puts in expected directory """
-    subprocess.check_call(['git', 'clone', 'https://github.com/wanderu/bamboo-scripts'])
+    subprocess.check_call(['git', 'clone', 'https://github.com/wanderu/bamboo-scripts', 'wanderu/bamboo/scripts'])
     # if not path.isdir('wanderu/bamboo/scripts'):
     #     rmtree('wanderu/bamboo/scripts')
-
-    rename('bamboo-scripts', 'wanderu/bamboo/scripts')
 
 class GitCloneScriptsInstall(install):
     """ Git Clone on install """
