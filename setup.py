@@ -15,8 +15,8 @@ def read(*rnames):
 class GitCloneScripts():
     """ Clones Lua Scripts and puts in expected directory """
     subprocess.check_call(['git', 'clone', 'https://github.com/wanderu/bamboo-scripts'])
-    if path.isdir('wanderu/bamboo/scripts'):
-        rmtree('wanderu/bamboo/scripts')
+    # if not path.isdir('wanderu/bamboo/scripts'):
+    #     rmtree('wanderu/bamboo/scripts')
 
     rename('bamboo-scripts', 'wanderu/bamboo/scripts')
 
