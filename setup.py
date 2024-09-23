@@ -28,11 +28,6 @@ setup(
     namespace_packages = ['wanderu'],  # setuptools specific feature
     packages = find_packages(),   # Find packages in the 'src' folder
     cmdclass = {'build_ext': GitCloneScripts},
-    package_data = {
-        'wanderu.bamboo': [
-            'scripts/*.lua'
-        ]
-    },
     install_requires = [
         'setuptools',
         'six',
