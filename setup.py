@@ -1,45 +1,10 @@
 # coding: utf-8
-from os.path import join as pathjoin, dirname, isdir
-from shutil import rmtree
-import subprocess
+from os.path import join as pathjoin, dirname
 from setuptools import setup, find_packages
-from setuptools.command.install import install
-from setuptools.command.develop import develop
-from setuptools.command.egg_info import egg_info
 
 def read(*rnames):
     """ Reads file """
     return open(pathjoin(dirname(__file__), *rnames)).read()
-
-class GitCloneScripts():
-    """ Clones Lua Scripts and puts in expected directory """
-    if isdir('wanderu/bamboo/scripts'):
-        rmtree('wanderu/bamboo/scripts')
-
-    subprocess.check_call([
-        'git',
-        'clone',
-        'https://github.com/wanderu/bamboo-scripts',
-        'wanderu/bamboo/scripts'
-    ])
-
-class GitCloneScriptsInstall(install):
-    """ Git Clone on install """
-    def run(self):
-        install.run(self)
-        GitCloneScripts()
-
-class GitCloneScriptsDevelop(develop):
-    """ Git Clone on develop """
-    def run(self):
-        develop.run(self)
-        GitCloneScripts()
-
-class GitCloneScriptsEggInfo(egg_info):
-    """ Git Clone on egg_info """
-    def run(self):
-        egg_info.run(self)
-        GitCloneScripts()
 
 setup(
     # about meta
@@ -57,11 +22,6 @@ setup(
         'wanderu.bamboo': [
             'scripts/*.lua'
         ]
-    },
-    cmdclass = {
-        'install': GitCloneScriptsInstall,
-        'develop': GitCloneScriptsDevelop,
-        'egg_info': GitCloneScriptsEggInfo,
     },
     install_requires = [
         'setuptools',
